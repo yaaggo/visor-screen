@@ -44,10 +44,20 @@ registerProcessor('pcm-player', PcmPlayer)
 `
 
 export class AppAudioMixer {
-  constructor() {
+  constructor(initialGain = 1) {
     this.ctx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' })
     this.dest = this.ctx.createMediaStreamDestination()
     this.dest.channelCount = 2
+    this.gainNode = this.ctx.createGain()
+    this.gainNode.gain.value = initialGain
+    this.limiter = this.ctx.createDynamicsCompressor()
+    this.limiter.threshold.value = -1.5
+    this.limiter.knee.value = 6
+    this.limiter.ratio.value = 12
+    this.limiter.attack.value = 0.003
+    this.limiter.release.value = 0.15
+    this.gainNode.connect(this.limiter)
+    this.limiter.connect(this.dest)
     this.nodes = new Map() // id -> AudioWorkletNode
     this.ready = this.ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: 'text/javascript' })))
     this.offData = window.visor.onAudio((id, chunk) => {
@@ -60,6 +70,11 @@ export class AppAudioMixer {
     })
     this.offEnd = window.visor.onAudioEnd((id) => this.detach(id))
     this.track.contentHint = 'music'
+  }
+
+  setGain(value) {
+    const next = Math.max(0, Math.min(4, Number(value) || 0))
+    this.gainNode.gain.setTargetAtTime(next, this.ctx.currentTime, 0.015)
   }
 
   get track() {
@@ -79,7 +94,7 @@ export class AppAudioMixer {
     for (const [id, t] of want) {
       if (this.nodes.has(id)) continue
       const node = new AudioWorkletNode(this.ctx, 'pcm-player', { numberOfInputs: 0, outputChannelCount: [2] })
-      node.connect(this.dest)
+      node.connect(this.gainNode)
       this.nodes.set(id, node)
       await window.visor.audioStart(id, t.pid, !!t.exclude)
     }

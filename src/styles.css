@@ -2031,6 +2031,66 @@ button:disabled {
 .participant-meta > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
 .device-icon { flex: none; color: var(--faint); transition: color var(--t-fast) }
 .participant:hover .device-icon, .participant[aria-pressed=true] .device-icon { color: var(--muted) }
+.hud-vol-pct {
+  width: 0;
+  overflow: hidden;
+  opacity: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: right;
+  transition: width var(--t-med) var(--spring), opacity var(--t-fast);
+}
+.hud-volume:hover .hud-vol-pct,
+.hud-volume:focus-within .hud-vol-pct {
+  width: 34px;
+  opacity: 1;
+}
+.dd-gain {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+.dd-audio-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.audio-gain-control {
+  flex: 1;
+  min-width: 140px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.audio-gain-range {
+  flex: 1;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--white) var(--v), var(--line-strong) var(--v));
+  cursor: pointer;
+}
+.audio-gain-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--white);
+}
+.audio-gain-val {
+  min-width: 34px;
+  text-align: right;
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--text);
+}
 .call-lobby { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; align-content: center; gap: 12px; height: 100% }
 .call-lobby .participant { flex-direction: column; padding: 12px }
 .stream-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); grid-auto-rows: minmax(0,1fr); height: 100%; gap: 6px }

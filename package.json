@@ -1,7 +1,7 @@
 {
   "name": "visor-screen",
   "private": true,
-  "version": "1.3.1",
+  "version": "1.3.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -78,7 +78,8 @@
       "artifactName": "Visor-Setup-${version}.${ext}"
     },
     "portable": {
-      "artifactName": "Visor-${version}-portable.${ext}"
+      "artifactName": "Visor-${version}-portable.${ext}",
+      "unpackDirName": "visor-screen-portable"
     }
   }
 }

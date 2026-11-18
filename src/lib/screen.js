@@ -97,6 +97,7 @@ export class ScreenRoom {
 
   publishPresence() {
     return this.channel?.track({
+      endpointId: this.me.id,
       profileId: this.me.profileId,
       name: this.me.name,
       photo: this.me.photo,
@@ -123,9 +124,12 @@ export class ScreenRoom {
 
     for (const input of this.inputs.values()) {
       const peer = this.peers.find((p) => p.id === input.id)
-      if (!peer?.sharing || peer.shareId !== input.shareId) {
+      if (!peer) continue
+      if (!peer.sharing || (input.shareId && peer.shareId !== input.shareId)) {
         this.stopWatching(input.id)
-        if (peer?.sharing) this.watch(peer.id, input.preview)
+        if (peer.sharing) this.watch(peer.id, input.preview)
+      } else if (!input.shareId && peer.shareId) {
+        input.shareId = peer.shareId
       }
     }
     this.emit()
@@ -244,8 +248,8 @@ export class ScreenRoom {
 
   // ---------- espectador ----------
 
-  watch(id, preview = false) {
-    const peer = this.peers.find((p) => p.id === id && p.sharing)
+  watch(id, preview = false, peerHint = null) {
+    const peer = this.peers.find((p) => p.id === id && p.sharing) ?? (peerHint?.sharing ? peerHint : null)
     if (!peer || id === this.me.id || this.closed) return
     const current = this.inputs.get(id)
     if (current) {

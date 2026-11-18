@@ -6,9 +6,43 @@ import { captureNative } from './nativeCapture.js'
 
 const RAW_AUDIO = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2, sampleRate: 48000 }
 
+// Amplifica uma track de audio de navegador/dispositivo com GainNode + limiter suave anti-clipping
+function createStreamAudioBooster(rawStream, initialGain = 1) {
+  const [rawAudio] = rawStream.getAudioTracks()
+  if (!rawAudio) return { stream: rawStream, setGain: () => {}, cleanup: () => {} }
+  const ctx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' })
+  const src = ctx.createMediaStreamSource(new MediaStream([rawAudio]))
+  const gainNode = ctx.createGain()
+  gainNode.gain.value = initialGain
+  const limiter = ctx.createDynamicsCompressor()
+  limiter.threshold.value = -1.5
+  limiter.knee.value = 6
+  limiter.ratio.value = 12
+  limiter.attack.value = 0.003
+  limiter.release.value = 0.15
+  const dest = ctx.createMediaStreamDestination()
+  dest.channelCount = 2
+  src.connect(gainNode)
+  gainNode.connect(limiter)
+  limiter.connect(dest)
+  if (ctx.state === 'suspended') ctx.resume().catch(() => {})
+  const [boostedAudio] = dest.stream.getAudioTracks()
+  boostedAudio.contentHint = 'music'
+  const stream = new MediaStream([...rawStream.getVideoTracks(), boostedAudio])
+  return {
+    stream,
+    setGain: (v) => gainNode.gain.setTargetAtTime(Math.max(0, Math.min(4, Number(v) || 0)), ctx.currentTime, 0.015),
+    cleanup: () => {
+      rawAudio.stop()
+      boostedAudio.stop()
+      ctx.close().catch(() => {})
+    },
+  }
+}
+
 // Navegador: seletor do proprio navegador. Audio = aba/sistema (o navegador decide o que oferece).
-export async function captureWeb(surface, preset, withAudio) {
-  const stream = await navigator.mediaDevices.getDisplayMedia({
+export async function captureWeb(surface, preset, withAudio, audioGain = 1) {
+  const rawStream = await navigator.mediaDevices.getDisplayMedia({
     video: { ...videoConstraints(preset), displaySurface: surface },
     audio: withAudio ? { ...RAW_AUDIO, suppressLocalAudioPlayback: false } : false,
     systemAudio: withAudio ? 'include' : 'exclude',
@@ -16,7 +50,8 @@ export async function captureWeb(surface, preset, withAudio) {
     surfaceSwitching: 'include',
     monitorTypeSurfaces: surface === 'monitor' ? 'include' : 'exclude',
   })
-  return { stream, cleanup: () => {} }
+  const boosted = createStreamAudioBooster(rawStream, audioGain)
+  return { stream: boosted.stream, setAudioGain: boosted.setGain, cleanup: boosted.cleanup }
 }
 
 // Desktop: fonte escolhida no seletor proprio + mixer de audio por app.
@@ -36,10 +71,10 @@ function captureChromium(sourceId, preset) {
   })
 }
 
-export async function captureDesktop(sourceId, preset, audioTargets, engine = 'chromium') {
+export async function captureDesktop(sourceId, preset, audioTargets, engine = 'chromium', audioGain = 1) {
   const native = engine === 'rust' ? await captureNative(sourceId, preset) : null
   const video = native?.track ?? (await captureChromium(sourceId, preset)).getVideoTracks()[0]
-  const mixer = new AppAudioMixer()
+  const mixer = new AppAudioMixer(audioGain)
   try {
     await mixer.set(audioTargets)
   } catch (error) {
@@ -52,6 +87,7 @@ export async function captureDesktop(sourceId, preset, audioTargets, engine = 'c
   return {
     stream,
     mixer,
+    setAudioGain: (v) => mixer.setGain(v),
     engine,
     setPreset: native?.setPreset,
     getStats: native?.getStats,
@@ -63,13 +99,14 @@ export async function captureDesktop(sourceId, preset, audioTargets, engine = 'c
 }
 
 // Placa de captura / webcam + (opcional) entrada de audio do proprio dispositivo.
-export async function captureDevice(deviceId, preset, audioDeviceId) {
-  const stream = await navigator.mediaDevices.getUserMedia({
+export async function captureDevice(deviceId, preset, audioDeviceId, audioGain = 1) {
+  const rawStream = await navigator.mediaDevices.getUserMedia({
     video: { deviceId: { exact: deviceId }, ...videoConstraints(preset) },
     audio: audioDeviceId ? { deviceId: { exact: audioDeviceId }, ...RAW_AUDIO } : false,
   })
-  stream.getAudioTracks().forEach((t) => (t.contentHint = 'music'))
-  return { stream, cleanup: () => {} }
+  rawStream.getAudioTracks().forEach((t) => (t.contentHint = 'music'))
+  const boosted = createStreamAudioBooster(rawStream, audioGain)
+  return { stream: boosted.stream, setAudioGain: boosted.setGain, cleanup: boosted.cleanup }
 }
 
 // Lista dispositivos; pede permissao uma vez se os nomes vierem vazios.

@@ -243,6 +243,16 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 
 ## Estado atual
 
+1.3.2 — protecao contra ENOENT no portatil, participantes sincronizados e amplificador de audio 300% (2026-11-18):
+- `electron/audio.cjs` verifica `existsSync(visor-audio.exe)` antes de executar ou iniciar capturas e trata eventos
+  `error` no `spawn`, evitando `Uncaught Exception: spawn visor-audio.exe ENOENT` quando o Windows/antivirus remove
+  temporarios do executavel portatil (`unpackDirName: visor-screen-portable`).
+- A lista de participantes em `ScreenChannel` unifica `s.peers` (sala) com `visitors` (diretorio do servidor) e
+  usa um container estavel para o portal da sidebar, evitando que transmissores sumam ao entrar no canal.
+- Controle de volume robusto nos dois lados com Web Audio API (`GainNode` + `DynamicsCompressorNode` anti-clipping):
+  espectador ajusta de `0%` a `300%` (padrao `150%`) no HUD do palco; transmissor ajusta o ganho de envio (`25%` a `300%`,
+  padrao `150%`) no painel de Audio.
+
 1.3.1 — presenca, reconexao, indicador de dispositivo e estabilidade de resolucao (2026-11-18):
 - A sala e o diretorio usam uma chave por instancia do app/aba. A mesma conta pode transmitir no PC e assistir
   no tablet. O ID do perfil continua identificando a foto; clientes novos reconhecem transmissores da 1.3.0.

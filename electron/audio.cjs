@@ -1,18 +1,20 @@
 // Gerencia o helper nativo visor-audio.exe (captura de audio por aplicativo no Windows).
 const { execFile, spawn } = require('node:child_process')
+const { existsSync } = require('node:fs')
 const path = require('node:path')
 const { app } = require('electron')
 
 const exe = () =>
-  app.isPackaged
+  app?.isPackaged
     ? path.join(process.resourcesPath, 'bin', 'visor-audio.exe')
     : path.join(__dirname, 'native', 'bin', 'visor-audio.exe')
 
-const supported = process.platform === 'win32'
+const isAvailable = () => process.platform === 'win32' && existsSync(exe())
 const captures = new Map() // id -> ChildProcess
 
 function run(args) {
   return new Promise((resolve, reject) => {
+    if (!isAvailable()) return reject(new Error('visor-audio.exe indisponivel'))
     execFile(exe(), args, { windowsHide: true, timeout: 5000, maxBuffer: 4 << 20 }, (err, stdout) =>
       err ? reject(err) : resolve(stdout.toString()),
     )
@@ -20,7 +22,7 @@ function run(args) {
 }
 
 async function listApps() {
-  if (!supported) return []
+  if (!isAvailable()) return []
   const self = process.execPath.toLowerCase()
   // remove o proprio Visor/Electron (o audio do app roda num processo filho com o mesmo executavel)
   const apps = JSON.parse(await run(['list'])).filter((a) => a.path.toLowerCase() !== self)
@@ -39,29 +41,40 @@ async function listApps() {
 
 // Prioridade de CPU/GPU do Visor inteiro (main + filhos: GPU, captura, encoder) durante a transmissao
 async function boost(on) {
-  if (!supported) return null
+  if (!isAvailable()) return null
   return JSON.parse(await run(['boost', String(process.pid), ...(on ? [] : ['normal'])]))
 }
 
 async function windowPid(hwnd) {
-  if (!supported) return 0
+  if (!isAvailable()) return 0
   return Number(await run(['winpid', String(hwnd)])) || 0
 }
 
 // Inicia captura; envia blocos de float32 intercalados (estereo, 48 kHz) para o renderer.
 function start(sender, id, pid, exclude) {
   stop(id)
-  if (!supported) return false
-  const child = spawn(exe(), ['capture', String(pid), ...(exclude ? ['exclude'] : [])], { windowsHide: true })
+  if (!isAvailable()) return false
+  let child
+  try {
+    child = spawn(exe(), ['capture', String(pid), ...(exclude ? ['exclude'] : [])], { windowsHide: true })
+  } catch (err) {
+    console.warn('[visor-audio] spawn falhou:', err.message)
+    return false
+  }
   captures.set(id, child)
   let rest = Buffer.alloc(0)
-  child.stdout.on('data', (chunk) => {
+  child.on('error', (err) => {
+    console.warn('[visor-audio] erro no processo:', err.message)
+    if (captures.get(id) === child) captures.delete(id)
+    if (!sender.isDestroyed()) sender.send('audio:end', id, -1)
+  })
+  child.stdout?.on('data', (chunk) => {
     const buf = rest.length ? Buffer.concat([rest, chunk]) : chunk
     const usable = buf.length - (buf.length % 8) // 8 bytes = 1 frame estereo float32
     rest = buf.subarray(usable)
     if (usable && !sender.isDestroyed()) sender.send('audio:data', id, buf.subarray(0, usable))
   })
-  child.stderr.on('data', (d) => console.warn('[visor-audio]', d.toString().trim()))
+  child.stderr?.on('data', (d) => console.warn('[visor-audio]', d.toString().trim()))
   child.on('exit', (code) => {
     if (captures.get(id) === child) captures.delete(id)
     if (!sender.isDestroyed()) sender.send('audio:end', id, code)
@@ -73,11 +86,25 @@ function stop(id) {
   const child = captures.get(id)
   if (!child) return
   captures.delete(id)
-  child.kill()
+  try {
+    child.kill()
+  } catch {
+    /* ignore */
+  }
 }
 
 function stopAll() {
   for (const id of [...captures.keys()]) stop(id)
 }
 
-module.exports = { supported, listApps, windowPid, boost, start, stop, stopAll }
+module.exports = {
+  get supported() {
+    return isAvailable()
+  },
+  listApps,
+  windowPid,
+  boost,
+  start,
+  stop,
+  stopAll,
+}

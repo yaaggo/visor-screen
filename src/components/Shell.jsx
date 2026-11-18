@@ -56,7 +56,6 @@ export default function Shell({ profile }) {
 
   const [editing, setEditing] = useState(false)
   const [photo, setPhoto] = useState(0)
-  const [roster, setRoster] = useState(null)
 
   const directory = useRef(null)
   const member = useRef(null)
@@ -79,7 +78,7 @@ export default function Shell({ profile }) {
       if (dir.state !== 'joined') return
       if (member.current) {
         tracked = true
-        return dir.track({ ...member.current, profileId: profile.id, device: member.current.device ?? deviceKind })
+        return dir.track({ ...member.current, endpointId, profileId: profile.id, device: member.current.device ?? deviceKind })
       }
       if (tracked) return dir.untrack().then(status => {
         if (status === 'ok' && !member.current) tracked = false
@@ -198,7 +197,7 @@ export default function Shell({ profile }) {
                     <button key={v.presence_ref} className="participant" onClick={() => go(serverId,c.id)}>
                       <span className="participant-face"><Avatar id={v.profileId ?? v.id} revision={v.photo} name={v.name} size={24}/>{v.sharing && <i className="live-dot"/>}</span><span className="participant-meta"><span>{v.name}</span>{v.device === 'mobile' ? <Smartphone size={11} className="device-icon" aria-label="Celular"/> : <Monitor size={11} className="device-icon" aria-label="Computador"/>}</span>
                     </button>)}</div>}
-                  {c.id === channelId && c.kind === 'screen' && <div ref={setRoster} />}
+                  {c.id === channelId && c.kind === 'screen' && <div id="active-channel-roster" />}
                 </div>
               )}
             />
@@ -234,7 +233,7 @@ export default function Shell({ profile }) {
           ) : channel?.kind === 'text' ? (
             <TextChannel key={channel.id} channel={channel} profile={profile} />
           ) : channel?.kind === 'screen' ? (
-            <ScreenChannel reportMember={reportMember} roster={roster} photo={photo} key={channel.id} channel={channel} profile={profile} chatChannel={firstText} />
+            <ScreenChannel reportMember={reportMember} visitors={visitors.filter(v => v.channel === channel.id)} photo={photo} key={channel.id} channel={channel} profile={profile} chatChannel={firstText} />
           ) : null}
         </div>
       </main>

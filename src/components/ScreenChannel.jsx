@@ -41,11 +41,16 @@ function useAudioApps(enabled) {
   return apps
 }
 
-export default function ScreenChannel({ channel, profile, chatChannel, roster, photo, reportMember }) {
+export default function ScreenChannel({ channel, profile, chatChannel, visitors = [], photo, reportMember }) {
   const roomRef = useRef(null)
   const captureRef = useRef(null)
   const starting = useRef(false)
   const [s, setS] = useState({ peers: [], sharing: false, local: null, remote: null, watching: null, viewers: 0, preset: '1080p60', bitrate: 0, uplink: null, stats: null, remoteAudio: false })
+  const [rosterNode, setRosterNode] = useState(null)
+
+  useEffect(() => {
+    setRosterNode(document.getElementById('active-channel-roster'))
+  })
   const [hover, setHover] = useState(null)
   const hoverTimer = useRef(null)
   const [menu, setMenu] = useState(null)
@@ -80,10 +85,12 @@ export default function ScreenChannel({ channel, profile, chatChannel, roster, p
   }, [photo, channel.id])
 
   const watchingKey = JSON.stringify((s.inputs ?? []).filter(v => !v.preview).map(v => v.id))
+  const ownPeer = s.peers.find(p => p.id === endpointId)
+  const activeShareId = ownPeer?.shareId ?? roomRef.current?.shareId ?? null
   useEffect(() => {
-    reportMember?.({ channel: channel.id, name: profile.username, photo, device: deviceKind, sharing: s.sharing, watching: JSON.parse(watchingKey) })
+    reportMember?.({ channel: channel.id, name: profile.username, photo, device: deviceKind, sharing: s.sharing, shareId: activeShareId, watching: JSON.parse(watchingKey) })
     return () => reportMember?.(null)
-  }, [channel.id, profile.username, photo, s.sharing, watchingKey, reportMember])
+  }, [channel.id, profile.username, photo, s.sharing, activeShareId, watchingKey, reportMember])
   useEffect(() => () => clearTimeout(hoverTimer.current), [])
   const hidePreview = () => { clearTimeout(hoverTimer.current); hoverTimer.current = setTimeout(() => setHover(null), 220) }
 
@@ -103,7 +110,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, roster, p
   useEffect(() => {
     if (!hover) return
     const room = roomRef.current
-    const timer = setTimeout(() => room.watch(hover.id, true), 300)
+    const timer = setTimeout(() => room.watch(hover.id, true, hover.peer), 300)
     return () => {
       clearTimeout(timer)
       if (room.inputs.get(hover.id)?.preview) room.stopWatching(hover.id)
@@ -127,23 +134,28 @@ export default function ScreenChannel({ channel, profile, chatChannel, roster, p
   useEffect(() => {
     if (s.sharing) captureRef.current?.mixer?.set(JSON.parse(targetKey))
   }, [targetKey, s.sharing])
+  useEffect(() => {
+    if (s.sharing) captureRef.current?.setAudioGain?.(cfg.audioGain ?? 1.5)
+  }, [cfg.audioGain, s.sharing])
 
   const start = async () => {
     if (starting.current) return false
     starting.current = true
     const room = roomRef.current
     const preset = getPreset(cfg.presetId)
+    const gain = cfg.audioGain ?? 1.5
     try {
       let cap
       if (cfg.kind === 'device') {
         if (!cfg.deviceId) throw new Error('device')
-        cap = await captureDevice(cfg.deviceId, preset, cfg.deviceAudioId)
+        cap = await captureDevice(cfg.deviceId, preset, cfg.deviceAudioId, gain)
       } else if (desktop) {
         if (!cfg.sourceId) throw new Error('source')
         const engine = nativeCapture && cfg.engine === 'rust' ? 'rust' : 'chromium'
-        cap = await captureDesktop(cfg.sourceId, preset, audioTargets(cfg, apps), engine)
+        const hasNativeAudio = await window.visor.audioSupported().catch(() => false)
+        cap = await captureDesktop(cfg.sourceId, preset, hasNativeAudio ? audioTargets(cfg, apps) : [], engine, gain)
       } else {
-        cap = await captureWeb(cfg.kind, preset, cfg.audioMode === 'all')
+        cap = await captureWeb(cfg.kind, preset, cfg.audioMode === 'all', gain)
       }
       if (!(await room.startShare(cap, cfg.presetId, cfg.bitrate))) return false
       captureRef.current = cap
@@ -164,10 +176,10 @@ export default function ScreenChannel({ channel, profile, chatChannel, roster, p
   const inputs = s.inputs ?? []
   const tiles = inputs.filter(input => !input.preview)
   if (s.sharing) tiles.unshift({ id: endpointId, stream: s.local })
-  const toggle = id => {
+  const toggle = (id, peerHint = null) => {
     const room = roomRef.current
     if (room.inputs.has(id) && !room.inputs.get(id).preview) room.stopWatching(id)
-    else room.watch(id)
+    else room.watch(id, false, peerHint)
     setHover(null)
     setMenu(null)
   }
@@ -180,40 +192,53 @@ export default function ScreenChannel({ channel, profile, chatChannel, roster, p
         clearTimeout(hoverTimer.current)
         if (!p.sharing) return
         const rect = e.currentTarget.getBoundingClientRect()
-        setHover({id:p.id, left:Math.min(innerWidth-212, Math.max(8,rect.left)), top:Math.max(8,rect.top-126)})
+        setHover({id:p.id, peer:p, left:Math.min(innerWidth-212, Math.max(8,rect.left)), top:Math.max(8,rect.top-126)})
       }} onMouseLeave={hidePreview}
-      onClick={() => { if (p.sharing && !own) { if (!active) toggle(p.id); else setHover(null) } }}
+      onClick={() => { if (p.sharing && !own) { if (!active) toggle(p.id, p); else setHover(null) } }}
       onContextMenu={e => {
         if (!p.sharing || own) return
         e.preventDefault()
         setHover(null)
-        setMenu({ id:p.id, x:Math.min(innerWidth-160,e.clientX), y:Math.min(innerHeight-48,e.clientY) })
+        setMenu({ id:p.id, peer:p, x:Math.min(innerWidth-160,e.clientX), y:Math.min(innerHeight-48,e.clientY) })
       }}>
       <span className="participant-face"><Avatar id={p.profileId ?? p.id} revision={own ? photo : p.photo} name={p.name} size={compact ? 24 : 60}/>{p.sharing && <i className="live-dot"/>}</span>
       <span className="participant-meta"><span>{p.name}</span>{(own ? deviceKind : p.device) === 'mobile' ? <Smartphone size={11} className="device-icon" aria-label="Celular"/> : <Monitor size={11} className="device-icon" aria-label="Computador"/>}</span>{compact && !!p.watching?.length && <Eye size={12} aria-label="Assistindo"/>}
     </button>
   }
-  const hoverPeer = s.peers.find(p => p.id === hover?.id && p.sharing)
+  // Unifica peers da sala com visitors do diretorio para que participantes nunca sumam durante reconexao ou entrada
+  const peerMap = new Map()
+  for (const v of visitors) {
+    const key = v.endpointId ?? v.id
+    if (key) peerMap.set(key, { ...v, id: key })
+  }
+  for (const p of s.peers) {
+    const key = p.endpointId ?? p.id
+    const prev = peerMap.get(key)
+    peerMap.set(key, prev ? { ...prev, ...p, id: key } : { ...p, id: key })
+  }
+  const allPeers = [...peerMap.values()]
+
+  const hoverPeer = allPeers.find(p => p.id === hover?.id && p.sharing)
   const preview = hoverPeer && (hoverPeer.id === endpointId ? s.local : inputs.find(v => v.id === hoverPeer.id)?.stream)
 
   return (
     <div className={`screen ${chat && chatChannel ? 'with-chat' : ''}`}>
-      {roster && createPortal(<div className="channel-people">{s.peers.map(p => person(p,true))}</div>, roster)}
-      {hoverPeer && createPortal(<button className="stream-hover" onMouseEnter={() => clearTimeout(hoverTimer.current)} onMouseLeave={hidePreview} onClick={() => { if (hoverPeer.id !== endpointId) roomRef.current.watch(hoverPeer.id); setHover(null) }} style={{left:hover.left, top:hover.top}}>
+      {rosterNode && createPortal(<div className="channel-people">{allPeers.map(p => person(p,true))}</div>, rosterNode)}
+      {hoverPeer && createPortal(<button className="stream-hover" onMouseEnter={() => clearTimeout(hoverTimer.current)} onMouseLeave={hidePreview} onClick={() => { if (hoverPeer.id !== endpointId) roomRef.current.watch(hoverPeer.id, false, hoverPeer); setHover(null) }} style={{left:hover.left, top:hover.top}}>
         <video autoPlay muted playsInline ref={node => { if (node && node.srcObject !== preview) node.srcObject = preview ?? null }}/>
         <small>{hoverPeer.name}</small>
       </button>, document.body)}
       {menu && createPortal(<button autoFocus className="stream-menu" style={{left:menu.x,top:menu.y}} onPointerDown={e => e.stopPropagation()}
-        onClick={() => toggle(menu.id)}>{tiles.some(v => v.id === menu.id) ? 'Parar de assistir' : 'Assistir'}</button>,document.body)}
+        onClick={() => toggle(menu.id, menu.peer)}>{tiles.some(v => v.id === menu.id) ? 'Parar de assistir' : 'Assistir'}</button>,document.body)}
       <div className="stage-wrap">
         {tiles.length ? <div className="stream-grid" data-count={tiles.length}>
           {tiles.map(tile => <Stage key={tile.id} stream={tile.stream} local={tile.id === endpointId} stats={tile.stats}
             sendStats={s.sendStats} captureEngine={s.captureEngine} captureStats={s.captureStats}
             hasAudio={tile.id !== endpointId && !!tile.stream?.getAudioTracks().length}
-            watchingName={s.peers.find(p => p.id === tile.id)?.name}/>)}
-        </div> : <div className="call-lobby">{s.peers.map(p => person(p,false))}</div>}
+            watchingName={allPeers.find(p => p.id === tile.id)?.name}/>)}
+        </div> : <div className="call-lobby">{allPeers.map(p => person(p,false))}</div>}
 
-        {tiles.length > 0 && <div className="call-strip">{s.peers.map(p => person(p,true))}</div>}
+        {tiles.length > 0 && <div className="call-strip">{allPeers.map(p => person(p,true))}</div>}
         <Island
           s={s}
           cfg={cfg}
@@ -259,17 +284,60 @@ function Stage({ stream, local, stats, sendStats, captureEngine, captureStats, w
   const [diag, setDiag] = useState(() => pref.get('visor.diag', false))
   const video = useRef(null)
   const box = useRef(null)
+  const audioBooster = useRef(null)
   const [full, setFull] = useState(false)
-  const [volume, setVolume] = useState(() => pref.get('visor.volume', 0.8))
+  // Volume de 0 a 3.0 (0% a 300%, padrao 1.5 = 150%) com amplificador Web Audio + compressor
+  const [volume, setVolume] = useState(() => pref.get('visor.volumeBoost', 1.5))
   const [muted, setMuted] = useState(false)
   const [blocked, setBlocked] = useState(false)
+
+  // Conecta amplificador Web Audio (GainNode + DynamicsCompressorNode) na track de audio recebida
+  useEffect(() => {
+    if (local || !stream || !hasAudio || typeof AudioContext === 'undefined') return
+    const [audioTrack] = stream.getAudioTracks()
+    if (!audioTrack) return
+    let ctx
+    try {
+      ctx = new AudioContext({ latencyHint: 'interactive' })
+      const source = ctx.createMediaStreamSource(new MediaStream([audioTrack]))
+      const gain = ctx.createGain()
+      const limiter = ctx.createDynamicsCompressor()
+      limiter.threshold.value = -1.0
+      limiter.knee.value = 6
+      limiter.ratio.value = 12
+      limiter.attack.value = 0.002
+      limiter.release.value = 0.12
+      source.connect(gain)
+      gain.connect(limiter)
+      limiter.connect(ctx.destination)
+      audioBooster.current = { ctx, gain }
+    } catch {
+      audioBooster.current = null
+    }
+    return () => {
+      audioBooster.current = null
+      ctx?.close().catch(() => {})
+    }
+  }, [stream, local, hasAudio])
 
   useEffect(() => {
     const v = video.current
     if (!v) return
     if (v.srcObject !== stream) v.srcObject = stream ?? null
-    v.muted = local || muted || blocked
-    v.volume = volume
+    const booster = audioBooster.current
+    const silence = local || muted || blocked || volume === 0
+    if (booster) {
+      // O elemento <video> fica mudo para nao duplicar; o som sai pelo AudioContext amplificado ate 300%
+      v.muted = true
+      const targetGain = silence ? 0 : volume
+      booster.gain.gain.setTargetAtTime(targetGain, booster.ctx.currentTime, 0.015)
+      if (!silence && booster.ctx.state === 'suspended') {
+        booster.ctx.resume().catch(() => setBlocked(true))
+      }
+    } else {
+      v.muted = silence
+      v.volume = Math.max(0, Math.min(1, volume))
+    }
     if (stream && local) {
       // A previa pode parar enquanto o jogo tem foco. As tracks seguem ativas no WebRTC.
       const preview = () => {
@@ -286,15 +354,13 @@ function Stage({ stream, local, stats, sendStats, captureEngine, captureStats, w
         }
       }
     } else if (stream && !muted) {
-      v.muted = false
       v.play().catch(() => {
-        // autoplay com som bloqueado: toca mudo e pede um clique
         v.muted = true
         setBlocked(true)
         v.play().catch(() => {})
       })
     }
-  }, [stream, local, muted, volume, blocked])
+  }, [stream, local, muted, volume, blocked, hasAudio])
 
   useEffect(() => {
     const on = () => setFull(document.fullscreenElement === box.current)
@@ -304,6 +370,7 @@ function Stage({ stream, local, stats, sendStats, captureEngine, captureStats, w
 
   const toggleFull = () => (document.fullscreenElement ? document.exitFullscreen() : box.current.requestFullscreen())
   const silent = muted || blocked || volume === 0
+  const volPct = Math.round((muted ? 0 : volume) * 100)
 
   return (
     <div ref={box} className={`stage ${stream ? 'has-stream' : ''}`} onDoubleClick={() => stream && toggleFull()}>
@@ -347,6 +414,7 @@ function Stage({ stream, local, stats, sendStats, captureEngine, captureStats, w
                 className={`hud-btn ${blocked ? 'is-attention' : ''}`}
                 magnetic={false}
                 onClick={() => {
+                  audioBooster.current?.ctx?.resume().catch(() => {})
                   if (blocked) return setBlocked(false)
                   setMuted((m) => !m)
                 }}
@@ -357,19 +425,21 @@ function Stage({ stream, local, stats, sendStats, captureEngine, captureStats, w
                 type="range"
                 className="hud-range"
                 min={0}
-                max={1}
-                step={0.01}
+                max={3}
+                step={0.05}
                 value={muted ? 0 : volume}
                 aria-label="Volume"
-                style={{ '--v': `${(muted ? 0 : volume) * 100}%` }}
+                style={{ '--v': `${((muted ? 0 : volume) / 3) * 100}%` }}
                 onChange={(e) => {
                   const v = Number(e.target.value)
+                  audioBooster.current?.ctx?.resume().catch(() => {})
                   setVolume(v)
                   setMuted(false)
                   setBlocked(false)
-                  pref.set('visor.volume', v)
+                  pref.set('visor.volumeBoost', v)
                 }}
               />
+              <span className="hud-vol-pct mono">{volPct}%</span>
             </span>
           )}
           <IconButton label={full ? 'Sair da tela cheia' : 'Tela cheia'} className="hud-btn" onClick={toggleFull} magnetic={false}>

@@ -35,6 +35,7 @@ export function useShareConfig() {
     deviceId: pref.get('visor.device', null),
     deviceAudioId: pref.get('visor.deviceAudio', null),
     audioMode: pref.get('visor.audioMode', 'all'), // off | all
+    audioGain: pref.get('visor.audioGain', 1.5), // 0.5 a 3.0 (padrao 150% para compensar apps baixos no Windows)
     exclude: pref.get('visor.exclude', []), // exes (minusculo) que NAO entram no audio (so desktop)
     presetId: pref.get('visor.preset', '1080p60'),
     bitrate: pref.get('visor.bitrate', getPreset(pref.get('visor.preset', '1080p60')).bitrate),
@@ -47,6 +48,7 @@ export function useShareConfig() {
       pref.set('visor.device', next.deviceId)
       pref.set('visor.deviceAudio', next.deviceAudioId)
       pref.set('visor.audioMode', next.audioMode)
+      pref.set('visor.audioGain', next.audioGain)
       pref.set('visor.exclude', next.exclude)
       pref.set('visor.preset', next.presetId)
       pref.set('visor.bitrate', next.bitrate)
@@ -204,6 +206,7 @@ function SourceGrid({ cfg, update }) {
 
 function AudioPicker({ cfg, update, apps }) {
   const off = cfg.audioMode === 'off'
+  const gainPct = Math.round((cfg.audioGain ?? 1.5) * 100)
   const running = new Set(apps.map((a) => exeKey(a.exe)))
   // apps rodando + excluidos que nao estao abertos agora (para poder desmarcar)
   const rows = [
@@ -225,20 +228,39 @@ function AudioPicker({ cfg, update, apps }) {
         <>
           <AudioLines size={14} strokeWidth={1.75} className="dd-lead" />
           {off ? <VolumeX size={14} strokeWidth={1.75} /> : <Speaker size={14} strokeWidth={1.75} />}
+          {!off && <span className="dd-gain mono">{gainPct}%</span>}
           {!off && desktop && excluded > 0 && <span className="dd-badge mono">-{excluded}</span>}
         </>
       }
     >
-      <Segmented
-        label="Audio"
-        size="sm"
-        value={cfg.audioMode}
-        onChange={(audioMode) => update({ audioMode })}
-        options={[
-          { value: 'off', label: 'Mudo', icon: <VolumeX size={14} strokeWidth={1.75} /> },
-          { value: 'all', label: 'Tudo', icon: <Speaker size={14} strokeWidth={1.75} /> },
-        ]}
-      />
+      <div className="dd-audio-head">
+        <Segmented
+          label="Audio"
+          size="sm"
+          value={cfg.audioMode}
+          onChange={(audioMode) => update({ audioMode })}
+          options={[
+            { value: 'off', label: 'Mudo', icon: <VolumeX size={14} strokeWidth={1.75} /> },
+            { value: 'all', label: 'Tudo', icon: <Speaker size={14} strokeWidth={1.75} /> },
+          ]}
+        />
+        {!off && (
+          <label className="audio-gain-control" aria-label="Volume do áudio transmitido">
+            <Speaker size={13} strokeWidth={1.75} className="dd-lead" />
+            <input
+              type="range"
+              className="audio-gain-range"
+              min={0.25}
+              max={3}
+              step={0.05}
+              value={cfg.audioGain ?? 1.5}
+              style={{ '--v': `${(((cfg.audioGain ?? 1.5) - 0.25) / 2.75) * 100}%` }}
+              onChange={(e) => update({ audioGain: Number(e.target.value) })}
+            />
+            <span className="audio-gain-val mono">{gainPct}%</span>
+          </label>
+        )}
+      </div>
       {desktop && (
         <ul className={`dd-list ${off ? 'is-disabled' : ''}`} role="group" aria-label="Sem audio">
           {rows.map((a) => {
@@ -334,6 +356,22 @@ function DevicePicker({ cfg, update }) {
             </li>
           ))}
         </ul>
+        {cfg.deviceAudioId && (
+          <label className="audio-gain-control" aria-label="Volume do áudio do dispositivo">
+            <Speaker size={13} strokeWidth={1.75} className="dd-lead" />
+            <input
+              type="range"
+              className="audio-gain-range"
+              min={0.25}
+              max={3}
+              step={0.05}
+              value={cfg.audioGain ?? 1.5}
+              style={{ '--v': `${(((cfg.audioGain ?? 1.5) - 0.25) / 2.75) * 100}%` }}
+              onChange={(e) => update({ audioGain: Number(e.target.value) })}
+            />
+            <span className="audio-gain-val mono">{Math.round((cfg.audioGain ?? 1.5) * 100)}%</span>
+          </label>
+        )}
       </Dropdown>
     </>
   )
