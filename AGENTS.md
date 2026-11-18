@@ -146,7 +146,7 @@ npm run dist:win            # gera release/Visor-Setup-1.0.0.exe e release/Visor
 npx supabase db push --remote --yes
 npx supabase config diff / config push --yes
 npx vercel env ls
-npx vercel deploy --prod --yes
+npx vercel deploy --prod --yes   # opcional: push em main ja publica
 ```
 - Sem CLI global de supabase/vercel: use `npx`. `supabase db push` sem `--remote` tenta Docker local e falha.
 - Se o Electron reclamar de binario ausente: `node node_modules/electron/install.js`.
@@ -163,7 +163,7 @@ Feito:
   (placa de captura) com audio do dispositivo; slider de bitrate em degraus ate 50 Mbps com teste de rede e
   marca de limite; volume do espectador; H264 preferido; correcao de sessao anonima invalida; functions em gru1
 - Instaladores gerados em `release/` e publicados em GitHub Releases v1.0.0 (nao assinados: SmartScreen avisa na 1a execucao)
-- Repositorio git criado e enviado (privado). Vercel ainda faz deploy pela CLI, nao por push
+- Repositorio git criado e enviado (privado) e conectado a Vercel: push em `main` = deploy de producao; outras branches = preview
 - Servidor `estudio` pertence ao usuario `yago`; dados de teste removidos
 
 Nao verificado:
@@ -174,7 +174,6 @@ Nao verificado:
 Proximos passos sugeridos:
 - Repo e privado: so quem tem acesso baixa o instalador. Para amigos baixarem, tornar o repo publico ou criar um repo
   publico so de releases; depois adicionar botao de download na versao web
-- Conectar o repo a Vercel (`vercel git connect`) para deploy automatico por push
 - Nova versao do desktop: subir `version` no package.json, `npm run dist:win`, `gh release create vX.Y.Z release/*.exe`
 - Auto-update do desktop (electron-updater + GitHub Releases) e assinatura de codigo
 - TURN para conectividade em qualquer rede
