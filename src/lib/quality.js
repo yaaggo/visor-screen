@@ -26,7 +26,7 @@ export function videoConstraints(preset) {
 }
 
 // Aplica bitrate/fps maximos e preferencia de degradacao em um sender de video
-export async function tuneSender(sender, preset, bitrate, keepResolution = false) {
+export async function tuneSender(sender, preset, bitrate, keepResolution = true) {
   const params = sender.getParameters()
   if (!params.encodings?.length) params.encodings = [{}]
   const enc = params.encodings[0]
@@ -40,7 +40,7 @@ export async function tuneSender(sender, preset, bitrate, keepResolution = false
     enc.scaleResolutionDownBy = 1
     enc.priority = 'high'
     enc.networkPriority = 'high'
-    params.degradationPreference = preset.fps >= 60 && !keepResolution ? 'maintain-framerate' : 'maintain-resolution'
+    params.degradationPreference = keepResolution ? 'maintain-resolution' : 'maintain-framerate'
   }
   try {
     await sender.setParameters(params)
@@ -55,6 +55,7 @@ export async function tuneSender(sender, preset, bitrate, keepResolution = false
 // - audio: Opus estereo, 256 kbps, sem DTX
 export function mungeAnswer(sdp, bitrate) {
   const start = Math.round(Math.min(bitrate, MAX_BITRATE) / 1000)
+  const min = Math.max(500, Math.min(4000, Math.round(start * 0.25)))
   const lines = sdp.split('\r\n')
   const opus = new Set()
   const video = new Set()
@@ -67,7 +68,7 @@ export function mungeAnswer(sdp, bitrate) {
     if (section === 'video' && !/rtx|red|ulpfec|flexfec/i.test(m[2])) video.add(m[1])
   }
   const hasConfig = new Set(lines.flatMap(l => l.match(/^a=fmtp:(\d+) /)?.slice(1) ?? []))
-  const hints = `x-google-start-bitrate=${start};x-google-max-bitrate=${MAX_BITRATE / 1000};x-google-min-bitrate=500`
+  const hints = `x-google-start-bitrate=${start};x-google-max-bitrate=${MAX_BITRATE / 1000};x-google-min-bitrate=${min}`
   const out = lines.map((l) => {
     const codec = l.match(/^a=rtpmap:(\d+) /)?.[1]
     if (video.has(codec) && !hasConfig.has(codec)) return l + '\r\na=fmtp:' + codec + ' ' + hints

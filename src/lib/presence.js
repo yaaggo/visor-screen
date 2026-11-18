@@ -1,5 +1,24 @@
+import { desktop } from './env.js'
+
 // Each open app or tab is a distinct signaling endpoint, even on the same account.
 export const endpointId = crypto.randomUUID()
+
+export function detectDeviceKind(env = {
+  isDesktop: desktop,
+  userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+  platform: typeof navigator !== 'undefined' ? navigator.platform : '',
+  maxTouchPoints: typeof navigator !== 'undefined' ? navigator.maxTouchPoints : 0,
+  coarse: typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia('(pointer: coarse)').matches : false,
+}) {
+  if (env.isDesktop) return 'desktop'
+  if (/Android|iPhone|iPad|iPod|Mobile|Tablet|Silk|Kindle|PlayBook/i.test(env.userAgent)) return 'mobile'
+  if (env.platform === 'MacIntel' && env.maxTouchPoints > 1) return 'mobile'
+  if (env.coarse && env.maxTouchPoints > 1) return 'mobile'
+  return 'desktop'
+}
+
+export const deviceKind = detectDeviceKind()
+
 
 // Republish the latest state after a failed acknowledgement or a suspended tab.
 export function presencePublisher(publish) {

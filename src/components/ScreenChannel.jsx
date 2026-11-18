@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Activity, Eye, Maximize, MessageSquare, Minimize, Monitor, MonitorUp, Square, Volume2, VolumeX, X } from 'lucide-react'
+import { Activity, Eye, Maximize, MessageSquare, Minimize, Monitor, MonitorUp, Smartphone, Square, Volume2, VolumeX, X } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
-import { endpointId } from '../lib/presence.js'
+import { deviceKind, endpointId } from '../lib/presence.js'
 import { ScreenRoom } from '../lib/screen.js'
 import { fmtMbps, getPreset } from '../lib/quality.js'
 import { desktop } from '../lib/env.js'
@@ -66,7 +66,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, roster, p
   }, [])
 
   useEffect(() => {
-    const room = new ScreenRoom({ supabase, roomId: channel.id, me: { id: endpointId, profileId: profile.id, name: profile.username }, onChange: setS })
+    const room = new ScreenRoom({ supabase, roomId: channel.id, me: { id: endpointId, profileId: profile.id, name: profile.username, device: deviceKind }, onChange: setS })
     roomRef.current = room
     if (import.meta.env.DEV) window.__room = room // depuracao: window.__room.out / .inPc
     room.join()
@@ -81,7 +81,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, roster, p
 
   const watchingKey = JSON.stringify((s.inputs ?? []).filter(v => !v.preview).map(v => v.id))
   useEffect(() => {
-    reportMember?.({ channel: channel.id, name: profile.username, photo, sharing: s.sharing, watching: JSON.parse(watchingKey) })
+    reportMember?.({ channel: channel.id, name: profile.username, photo, device: deviceKind, sharing: s.sharing, watching: JSON.parse(watchingKey) })
     return () => reportMember?.(null)
   }, [channel.id, profile.username, photo, s.sharing, watchingKey, reportMember])
   useEffect(() => () => clearTimeout(hoverTimer.current), [])
@@ -190,7 +190,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, roster, p
         setMenu({ id:p.id, x:Math.min(innerWidth-160,e.clientX), y:Math.min(innerHeight-48,e.clientY) })
       }}>
       <span className="participant-face"><Avatar id={p.profileId ?? p.id} revision={own ? photo : p.photo} name={p.name} size={compact ? 24 : 60}/>{p.sharing && <i className="live-dot"/>}</span>
-      <span>{p.name}</span>{compact && !!p.watching?.length && <Eye size={12} aria-label="Assistindo"/>}
+      <span className="participant-meta"><span>{p.name}</span>{(own ? deviceKind : p.device) === 'mobile' ? <Smartphone size={11} className="device-icon" aria-label="Celular"/> : <Monitor size={11} className="device-icon" aria-label="Computador"/>}</span>{compact && !!p.watching?.length && <Eye size={12} aria-label="Assistindo"/>}
     </button>
   }
   const hoverPeer = s.peers.find(p => p.id === hover?.id && p.sharing)

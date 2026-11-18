@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Hash, LogOut, Monitor, Plus, Trash2, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { Hash, LogOut, Monitor, Plus, Smartphone, Trash2, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
-import { endpointId, presencePublisher } from '../lib/presence.js'
+import { deviceKind, endpointId, presencePublisher } from '../lib/presence.js'
 import { go, inviteUrl, useRoute } from '../lib/route.js'
 import { Avatar, CopyButton, HoldButton, IconButton, Segmented, usePopover } from './ui.jsx'
 import TextChannel from './TextChannel.jsx'
@@ -79,7 +79,7 @@ export default function Shell({ profile }) {
       if (dir.state !== 'joined') return
       if (member.current) {
         tracked = true
-        return dir.track({ ...member.current, profileId: profile.id })
+        return dir.track({ ...member.current, profileId: profile.id, device: member.current.device ?? deviceKind })
       }
       if (tracked) return dir.untrack().then(status => {
         if (status === 'ok' && !member.current) tracked = false
@@ -196,7 +196,7 @@ export default function Shell({ profile }) {
                 </div>
                   {c.id !== channelId && c.kind === 'screen' && <div className="channel-people">{visitors.filter(v => v.channel === c.id).map(v =>
                     <button key={v.presence_ref} className="participant" onClick={() => go(serverId,c.id)}>
-                      <span className="participant-face"><Avatar id={v.profileId ?? v.id} revision={v.photo} name={v.name} size={24}/>{v.sharing && <i className="live-dot"/>}</span>{v.name}
+                      <span className="participant-face"><Avatar id={v.profileId ?? v.id} revision={v.photo} name={v.name} size={24}/>{v.sharing && <i className="live-dot"/>}</span><span className="participant-meta"><span>{v.name}</span>{v.device === 'mobile' ? <Smartphone size={11} className="device-icon" aria-label="Celular"/> : <Monitor size={11} className="device-icon" aria-label="Computador"/>}</span>
                     </button>)}</div>}
                   {c.id === channelId && c.kind === 'screen' && <div ref={setRoster} />}
                 </div>

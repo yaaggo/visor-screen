@@ -243,9 +243,16 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 
 ## Estado atual
 
-1.3.1 — presenca e reconexao (2026-11-18):
+1.3.1 — presenca, reconexao, indicador de dispositivo e estabilidade de resolucao (2026-11-18):
 - A sala e o diretorio usam uma chave por instancia do app/aba. A mesma conta pode transmitir no PC e assistir
   no tablet. O ID do perfil continua identificando a foto; clientes novos reconhecem transmissores da 1.3.0.
+- A presenca publica `device: 'mobile' | 'desktop'` (detectando celular e tablet via UA/touch/iPadOS e computador/Electron)
+  e exibe um pequeno icone (`Smartphone` ou `Monitor`) ao lado do nome do participante.
+- O botao inicial de transmissao (`.share-btn`) na tela inicial da sala fica cinza (`var(--hover)` / `var(--text)`)
+  alem de circular quando o painel de configuracao esta aberto (`.island.is-open`), destacando apenas o botao `.island-go`.
+- `tuneSender` usa `degradationPreference: 'maintain-resolution'` por padrao em todos os motores (Web, Chromium e Rust)
+  e `mungeAnswer` define `x-google-min-bitrate` proporcional ao preset (ate 4 Mbps), evitando que placas AMD ou
+  transmissoes via navegador derrubem uma captura 1080p para 336p/1,8 Mbps sob carga de GPU.
 - A presenca atual e republicada ao voltar para a aba, recuperar a rede ou reassinar o canal. Falhas e timeouts
   de confirmacao repetem a publicacao mais recente. A captura em andamento continua durante a reconexao.
 - Validado em topico isolado no Realtime remoto com dois clientes representando o mesmo perfil: anuncio apos

@@ -2,7 +2,7 @@
 // Topologia: malha 1 -> N. Quem transmite abre um RTCPeerConnection por espectador.
 // Fluxo: espectador envia `request` -> transmissor responde `offer` -> espectador `answer` -> `ice` dos dois lados.
 import { getPreset, mungeAnswer, tuneSender, videoConstraints } from './quality.js'
-import { presencePublisher } from './presence.js'
+import { deviceKind, presencePublisher } from './presence.js'
 import { API_BASE } from './env.js'
 import { readInboundVideo, readOutboundVideo } from './screenStats.js'
 
@@ -100,6 +100,7 @@ export class ScreenRoom {
       profileId: this.me.profileId,
       name: this.me.name,
       photo: this.me.photo,
+      device: this.me.device ?? deviceKind,
       watching: [...this.inputs.values()].filter((v) => !v.preview).map((v) => v.id),
       sharing: !!this.local,
       shareId: this.shareId,
@@ -198,10 +199,9 @@ export class ScreenRoom {
   }
 
   async retune() {
-    const keepResolution = this.captureEngine === 'rust'
     for (const pc of this.out.values()) {
       for (const sender of pc.getSenders()) {
-        if (sender.track) await tuneSender(sender, this.preset, this.bitrate, keepResolution)
+        if (sender.track) await tuneSender(sender, this.preset, this.bitrate, true)
       }
     }
   }
@@ -224,7 +224,7 @@ export class ScreenRoom {
     }
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
-    await tuneSender(sender, this.preset, this.bitrate, this.captureEngine === 'rust')
+    await tuneSender(sender, this.preset, this.bitrate, true)
     for (const a of audioSenders) await tuneSender(a, this.preset, this.bitrate)
     this.send(viewerId, 'offer', { sid, sdp: pc.localDescription.toJSON() })
     this.emit()
