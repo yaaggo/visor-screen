@@ -243,6 +243,15 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 
 ## Estado atual
 
+1.3.1 — presenca e reconexao (2026-11-18):
+- A sala e o diretorio usam uma chave por instancia do app/aba. A mesma conta pode transmitir no PC e assistir
+  no tablet. O ID do perfil continua identificando a foto; clientes novos reconhecem transmissores da 1.3.0.
+- A presenca atual e republicada ao voltar para a aba, recuperar a rede ou reassinar o canal. Falhas e timeouts
+  de confirmacao repetem a publicacao mais recente. A captura em andamento continua durante a reconexao.
+- Validado em topico isolado no Realtime remoto com dois clientes representando o mesmo perfil: anuncio apos
+  timeout simulado, pedido de visualizacao, desconexao real do socket do transmissor, reconexao automatica,
+  saida e retorno do espectador e novo pedido para a mesma transmissao. Sem acesso ao tablet fisico.
+
 Fase 6 — Visor 1.3.0:
 - No desktop, Rust e o padrao para tela/janela. Chromium continua no seletor. Na web a fonte vem do navegador.
   O helper guarda o quadro WGC mais recente e publica a cada intervalo do preset, preservando a base de tempo

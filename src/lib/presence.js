@@ -1,0 +1,30 @@
+// Each open app or tab is a distinct signaling endpoint, even on the same account.
+export const endpointId = crypto.randomUUID()
+
+// Republish the latest state after a failed acknowledgement or a suspended tab.
+export function presencePublisher(publish) {
+  let active = true
+  let revision = 0
+  let retry
+  async function refresh() {
+    if (!active) return
+    clearTimeout(retry)
+    const current = ++revision
+    let status
+    try { status = await publish() } catch { status = 'error' }
+    if (active && current === revision && (status === 'error' || status === 'timed out')) {
+      retry = setTimeout(refresh, 3000)
+    }
+  }
+  const visible = () => { if (document.visibilityState === 'visible') refresh() }
+  document.addEventListener('visibilitychange', visible)
+  window.addEventListener('online', refresh)
+  window.addEventListener('pageshow', refresh)
+  return { refresh, close() {
+    active = false
+    clearTimeout(retry)
+    document.removeEventListener('visibilitychange', visible)
+    window.removeEventListener('online', refresh)
+    window.removeEventListener('pageshow', refresh)
+  } }
+}

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Activity, Eye, Maximize, MessageSquare, Minimize, Monitor, MonitorUp, Square, Volume2, VolumeX, X } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
+import { endpointId } from '../lib/presence.js'
 import { ScreenRoom } from '../lib/screen.js'
 import { fmtMbps, getPreset } from '../lib/quality.js'
 import { desktop } from '../lib/env.js'
@@ -65,7 +66,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, roster, p
   }, [])
 
   useEffect(() => {
-    const room = new ScreenRoom({ supabase, roomId: channel.id, me: { id: profile.id, name: profile.username }, onChange: setS })
+    const room = new ScreenRoom({ supabase, roomId: channel.id, me: { id: endpointId, profileId: profile.id, name: profile.username }, onChange: setS })
     roomRef.current = room
     if (import.meta.env.DEV) window.__room = room // depuracao: window.__room.out / .inPc
     room.join()
@@ -162,7 +163,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, roster, p
 
   const inputs = s.inputs ?? []
   const tiles = inputs.filter(input => !input.preview)
-  if (s.sharing) tiles.unshift({ id: profile.id, stream: s.local })
+  if (s.sharing) tiles.unshift({ id: endpointId, stream: s.local })
   const toggle = id => {
     const room = roomRef.current
     if (room.inputs.has(id) && !room.inputs.get(id).preview) room.stopWatching(id)
@@ -171,7 +172,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, roster, p
     setMenu(null)
   }
   const person = (p, compact) => {
-    const own = p.id === profile.id
+    const own = p.id === endpointId
     const active = tiles.some(tile => tile.id === p.id)
     return <button key={p.id} className={'participant' + (p.sharing ? ' live' : '')} aria-label={p.name}
       aria-pressed={p.sharing ? active : undefined}
@@ -188,17 +189,17 @@ export default function ScreenChannel({ channel, profile, chatChannel, roster, p
         setHover(null)
         setMenu({ id:p.id, x:Math.min(innerWidth-160,e.clientX), y:Math.min(innerHeight-48,e.clientY) })
       }}>
-      <span className="participant-face"><Avatar id={p.id} revision={own ? photo : p.photo} name={p.name} size={compact ? 24 : 60}/>{p.sharing && <i className="live-dot"/>}</span>
+      <span className="participant-face"><Avatar id={p.profileId ?? p.id} revision={own ? photo : p.photo} name={p.name} size={compact ? 24 : 60}/>{p.sharing && <i className="live-dot"/>}</span>
       <span>{p.name}</span>{compact && !!p.watching?.length && <Eye size={12} aria-label="Assistindo"/>}
     </button>
   }
   const hoverPeer = s.peers.find(p => p.id === hover?.id && p.sharing)
-  const preview = hoverPeer && (hoverPeer.id === profile.id ? s.local : inputs.find(v => v.id === hoverPeer.id)?.stream)
+  const preview = hoverPeer && (hoverPeer.id === endpointId ? s.local : inputs.find(v => v.id === hoverPeer.id)?.stream)
 
   return (
     <div className={`screen ${chat && chatChannel ? 'with-chat' : ''}`}>
       {roster && createPortal(<div className="channel-people">{s.peers.map(p => person(p,true))}</div>, roster)}
-      {hoverPeer && createPortal(<button className="stream-hover" onMouseEnter={() => clearTimeout(hoverTimer.current)} onMouseLeave={hidePreview} onClick={() => { if (hoverPeer.id !== profile.id) roomRef.current.watch(hoverPeer.id); setHover(null) }} style={{left:hover.left, top:hover.top}}>
+      {hoverPeer && createPortal(<button className="stream-hover" onMouseEnter={() => clearTimeout(hoverTimer.current)} onMouseLeave={hidePreview} onClick={() => { if (hoverPeer.id !== endpointId) roomRef.current.watch(hoverPeer.id); setHover(null) }} style={{left:hover.left, top:hover.top}}>
         <video autoPlay muted playsInline ref={node => { if (node && node.srcObject !== preview) node.srcObject = preview ?? null }}/>
         <small>{hoverPeer.name}</small>
       </button>, document.body)}
@@ -206,9 +207,9 @@ export default function ScreenChannel({ channel, profile, chatChannel, roster, p
         onClick={() => toggle(menu.id)}>{tiles.some(v => v.id === menu.id) ? 'Parar de assistir' : 'Assistir'}</button>,document.body)}
       <div className="stage-wrap">
         {tiles.length ? <div className="stream-grid" data-count={tiles.length}>
-          {tiles.map(tile => <Stage key={tile.id} stream={tile.stream} local={tile.id === profile.id} stats={tile.stats}
+          {tiles.map(tile => <Stage key={tile.id} stream={tile.stream} local={tile.id === endpointId} stats={tile.stats}
             sendStats={s.sendStats} captureEngine={s.captureEngine} captureStats={s.captureStats}
-            hasAudio={tile.id !== profile.id && !!tile.stream?.getAudioTracks().length}
+            hasAudio={tile.id !== endpointId && !!tile.stream?.getAudioTracks().length}
             watchingName={s.peers.find(p => p.id === tile.id)?.name}/>)}
         </div> : <div className="call-lobby">{s.peers.map(p => person(p,false))}</div>}
 

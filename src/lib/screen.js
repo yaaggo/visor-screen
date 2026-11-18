@@ -2,6 +2,7 @@
 // Topologia: malha 1 -> N. Quem transmite abre um RTCPeerConnection por espectador.
 // Fluxo: espectador envia `request` -> transmissor responde `offer` -> espectador `answer` -> `ice` dos dois lados.
 import { getPreset, mungeAnswer, tuneSender, videoConstraints } from './quality.js'
+import { presencePublisher } from './presence.js'
 import { API_BASE } from './env.js'
 import { readInboundVideo, readOutboundVideo } from './screenStats.js'
 
@@ -78,6 +79,7 @@ export class ScreenRoom {
     this.channel = this.supabase.channel(`screen:${this.roomId}`, {
       config: { broadcast: { self: false }, presence: { key: this.me.id } },
     })
+    this.publisher = presencePublisher(() => this.channel.state === 'joined' && this.publishPresence())
     this.channel
       .on('presence', { event: 'sync' }, () => this.onPresence())
       .on('broadcast', { event: 'signal' }, ({ payload }) => {
@@ -90,7 +92,12 @@ export class ScreenRoom {
   }
 
   track() {
+    return this.publisher ? this.publisher.refresh() : this.publishPresence()
+  }
+
+  publishPresence() {
     return this.channel?.track({
+      profileId: this.me.profileId,
       name: this.me.name,
       photo: this.me.photo,
       watching: [...this.inputs.values()].filter((v) => !v.preview).map((v) => v.id),
@@ -398,8 +405,9 @@ export class ScreenRoom {
   }
 
   leave() {
-    this.stopShare(false)
+    this.publisher?.close()
     this.closed = true
+    this.stopShare(false)
     this.stopWatching()
     clearInterval(this.statsTimer)
     if (this.channel) this.supabase.removeChannel(this.channel)

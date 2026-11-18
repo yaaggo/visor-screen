@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Hash, LogOut, Monitor, Plus, Trash2, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
+import { endpointId, presencePublisher } from '../lib/presence.js'
 import { go, inviteUrl, useRoute } from '../lib/route.js'
 import { Avatar, CopyButton, HoldButton, IconButton, Segmented, usePopover } from './ui.jsx'
 import TextChannel from './TextChannel.jsx'
@@ -65,24 +66,35 @@ export default function Shell({ profile }) {
     // Effects can replace a status during the same React commit.
     queueMicrotask(() => {
       if (member.current !== value || !directory.current) return
-      if (value) directory.current.track(value)
-      else directory.current.untrack()
+      directory.current.refresh()
     })
   }, [])
   useEffect(() => {
     setVisitors([])
     if (!serverId) return
     let alive = true
-    const dir = supabase.channel('calls:' + serverId, { config: { presence: { key: profile.id } } })
+    const dir = supabase.channel('calls:' + serverId, { config: { presence: { key: endpointId } } })
+    let tracked = false
+    const publisher = presencePublisher(() => {
+      if (dir.state !== 'joined') return
+      if (member.current) {
+        tracked = true
+        return dir.track({ ...member.current, profileId: profile.id })
+      }
+      if (tracked) return dir.untrack().then(status => {
+        if (status === 'ok' && !member.current) tracked = false
+        return status
+      })
+    })
     dir.on('presence', { event: 'sync' }, () => {
       if (alive) setVisitors(Object.entries(dir.presenceState()).flatMap(([id, entries]) => entries.map(meta => ({ ...meta, id }))))
     }).subscribe(status => {
       if (alive && status === 'SUBSCRIBED') {
-        directory.current = dir
-        if (member.current) dir.track(member.current)
+        directory.current = publisher
+        publisher.refresh()
       }
     })
-    return () => { alive = false; directory.current = null; supabase.removeChannel(dir) }
+    return () => { alive = false; publisher.close(); directory.current = null; supabase.removeChannel(dir) }
   }, [serverId, profile.id])
 
   const server = servers?.find((s) => s.id === serverId) ?? null
@@ -184,7 +196,7 @@ export default function Shell({ profile }) {
                 </div>
                   {c.id !== channelId && c.kind === 'screen' && <div className="channel-people">{visitors.filter(v => v.channel === c.id).map(v =>
                     <button key={v.presence_ref} className="participant" onClick={() => go(serverId,c.id)}>
-                      <span className="participant-face"><Avatar id={v.id} revision={v.photo} name={v.name} size={24}/>{v.sharing && <i className="live-dot"/>}</span>{v.name}
+                      <span className="participant-face"><Avatar id={v.profileId ?? v.id} revision={v.photo} name={v.name} size={24}/>{v.sharing && <i className="live-dot"/>}</span>{v.name}
                     </button>)}</div>}
                   {c.id === channelId && c.kind === 'screen' && <div ref={setRoster} />}
                 </div>
