@@ -3,6 +3,7 @@
 // Fluxo: espectador envia `request` -> transmissor responde `offer` -> espectador `answer` -> `ice` dos dois lados.
 import { getPreset, mungeAnswer, tuneSender, videoConstraints } from './quality.js'
 import { API_BASE } from './env.js'
+import { readInboundVideo, readOutboundVideo } from './screenStats.js'
 
 const FALLBACK_ICE = [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] }]
 let iceCache = null
@@ -41,6 +42,9 @@ export class ScreenRoom {
     this.watching = null // { id, shareId }
     this.remote = null // MediaStream
     this.stats = null // { width, height, fps, kbps }
+    this.sendStats = null
+    this.statsHistory = new WeakMap()
+    this.pollingStats = false
     this.manual = false // espectador escolheu parar de assistir
     this.closed = false
   }
@@ -58,6 +62,7 @@ export class ScreenRoom {
       bitrate: this.bitrate,
       uplink: this.uplink,
       stats: this.stats,
+      sendStats: this.sendStats,
       remoteAudio: !!this.remote?.getAudioTracks().length,
     })
   }
@@ -119,19 +124,26 @@ export class ScreenRoom {
 
   // capture: { stream, cleanup } vindo de sources.js
   async startShare(capture, presetId, bitrate) {
-    if (this.closed) return capture.cleanup?.() ?? capture.stream.getTracks().forEach((t) => t.stop())
+    if (this.closed) {
+      capture.stream.getTracks().forEach((t) => t.stop())
+      capture.cleanup?.()
+      return false
+    }
     this.preset = getPreset(presetId)
     this.bitrate = bitrate ?? this.preset.bitrate
     const { stream } = capture
     const [video] = stream.getVideoTracks()
     video.contentHint = this.preset.fps >= 60 ? 'motion' : 'detail'
-    video.addEventListener('ended', () => this.stopShare())
+    video.addEventListener('ended', () => {
+      if (this.local === stream) this.stopShare()
+    }, { once: true })
     this.stopShare(false)
     this.local = stream
     this.cleanup = capture.cleanup
     this.shareId = uid()
     await this.track()
     this.emit()
+    return this.local === stream
   }
 
   stopShare(announce = true) {
@@ -140,6 +152,7 @@ export class ScreenRoom {
     this.cleanup?.()
     this.cleanup = null
     this.uplink = null
+    this.sendStats = null
     this.local = null
     this.shareId = null
     this.manual = false
@@ -201,6 +214,10 @@ export class ScreenRoom {
     pc.onconnectionstatechange = null
     pc.close()
     this.out.delete(viewerId)
+    if (!this.out.size) {
+      this.uplink = null
+      this.sendStats = null
+    }
   }
 
   // ---------- espectador ----------
@@ -293,33 +310,54 @@ export class ScreenRoom {
     }
   }
 
+  // Guarda a ultima amostra por conexao e evita polls sobrepostos.
   async pollStats() {
-    if (this.out.size) {
-      let min = Infinity
-      for (const opc of this.out.values()) {
-        if (opc.connectionState !== 'connected') continue
-        const r = await opc.getStats()
-        r.forEach((st) => {
-          if (st.type === 'candidate-pair' && st.nominated && st.availableOutgoingBitrate) min = Math.min(min, st.availableOutgoingBitrate)
+    if (this.pollingStats || (!this.out.size && !this.inPc)) return
+    this.pollingStats = true
+    try {
+      const share = this.local
+      const inbound = this.inPc
+      const outgoing = [...this.out]
+      const samples = await Promise.all([
+        this.sampleStats(inbound),
+        ...outgoing.map(([, pc]) => this.sampleStats(pc)),
+      ])
+      if (this.closed) return
+
+      let changed = false
+      if (inbound && this.inPc === inbound) {
+        this.stats = readInboundVideo(...samples[0])
+        changed = true
+      }
+      if (share && this.local === share) {
+        const viewers = outgoing.flatMap(([id, pc], i) => {
+          if (this.out.get(id) !== pc) return []
+          const sample = readOutboundVideo(...samples[i + 1])
+          if (!sample) return []
+          return [{ ...sample, id, name: this.peers.find((p) => p.id === id)?.name ?? '?' }]
         })
+        const estimates = viewers.map((v) => v.uplink).filter((bps) => bps > 0)
+        this.uplink = estimates.length ? Math.min(...estimates) : null
+        this.sendStats = viewers.length ? { capture: viewers.find((v) => v.capture != null)?.capture, viewers } : null
+        changed = true
       }
-      const next = Number.isFinite(min) ? min : null
-      if (next !== this.uplink) {
-        this.uplink = next
-        this.emit()
-      }
+      if (changed) this.emit()
+    } finally {
+      this.pollingStats = false
     }
-    const pc = this.inPc
-    if (!pc || pc.connectionState !== 'connected') return
-    const report = await pc.getStats()
-    report.forEach((s) => {
-      if (s.type !== 'inbound-rtp' || s.kind !== 'video') return
-      const prev = this.lastInbound
-      const kbps = prev ? Math.round(((s.bytesReceived - prev.bytes) * 8) / (s.timestamp - prev.t)) : 0
-      this.lastInbound = { bytes: s.bytesReceived, t: s.timestamp }
-      this.stats = { width: s.frameWidth ?? 0, height: s.frameHeight ?? 0, fps: Math.round(s.framesPerSecond ?? 0), kbps }
-    })
-    this.emit()
+  }
+
+  async sampleStats(pc) {
+    if (pc?.connectionState !== 'connected') return []
+    try {
+      const report = await pc.getStats()
+      const previous = this.statsHistory.get(pc)
+      this.statsHistory.set(pc, report)
+      return [report, previous]
+    } catch {
+      // A conexao pode fechar enquanto a amostra esta em andamento.
+      return []
+    }
   }
 
   leave() {

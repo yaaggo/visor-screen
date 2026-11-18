@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('visor', {
   audioApps: () => ipcRenderer.invoke('audio:apps'),
   audioSupported: () => ipcRenderer.invoke('audio:supported'),
   selfPid: () => ipcRenderer.invoke('self-pid'),
+  boost: (on) => ipcRenderer.invoke('boost', on),
   audioStart: (id, pid, exclude) => ipcRenderer.invoke('audio:start', id, pid, exclude),
   audioStop: (id) => ipcRenderer.invoke('audio:stop', id),
   onAudio: (cb) => {

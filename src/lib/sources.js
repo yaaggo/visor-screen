@@ -34,7 +34,13 @@ export async function captureDesktop(sourceId, preset, audioTargets) {
     },
   })
   const mixer = new AppAudioMixer()
-  await mixer.set(audioTargets)
+  try {
+    await mixer.set(audioTargets)
+  } catch (error) {
+    video.getTracks().forEach((track) => track.stop())
+    mixer.close()
+    throw error
+  }
   const stream = new MediaStream([...video.getVideoTracks(), mixer.track])
   return { stream, mixer, cleanup: () => mixer.close() }
 }

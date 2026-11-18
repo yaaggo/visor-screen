@@ -100,13 +100,7 @@ export default function SharePanel({ cfg, update, live, open, peers, uplink, app
         />
       </div>
 
-      <BitrateRow cfg={cfg} update={update} peers={peers} uplink={uplink} live={live} open={open}>
-        {!live && (
-          <button type="button" className="island-go" aria-label="Iniciar" data-tip="Iniciar" onClick={onStart}>
-            <span className="live-dot" />
-          </button>
-        )}
-      </BitrateRow>
+      <BitrateRow cfg={cfg} update={update} peers={peers} uplink={uplink} live={live} open={open} onStart={onStart} />
     </div>
   )
 }
@@ -320,27 +314,36 @@ function DevicePicker({ cfg, update }) {
 
 const NET_KEY = 'visor.uplink'
 
-function BitrateRow({ cfg, update, peers, uplink, live, open, children }) {
+function BitrateRow({ cfg, update, peers, uplink, live, open, onStart }) {
   const [net, setNet] = useState(() => {
     const v = pref.get(NET_KEY, null)
     return v && Date.now() - v.t < 3600e3 ? v.bps : null
   })
   const [busy, setBusy] = useState(false)
+  const test = useRef(null)
   const others = Math.max(1, peers.length - 1)
 
   const measure = useCallback(async () => {
+    if (test.current) return
+    const controller = new AbortController()
+    test.current = controller
     setBusy(true)
     try {
-      const bps = await measureUpload()
+      const bps = await measureUpload(controller.signal)
+      if (controller.signal.aborted) return
       pref.set(NET_KEY, { bps, t: Date.now() })
       setNet(bps)
-      // o mais alto que a rede aguenta: 80% do upload dividido pelos espectadores
-      update({ bitrate: snapBitrate((bps * 0.8) / others) })
     } catch {
-      /* sem rede */
+      controller.abort()
+    } finally {
+      test.current = null
+      setBusy(false)
     }
-    setBusy(false)
-  }, [others, update])
+  }, [])
+
+  useEffect(() => {
+    if (open && !live) return () => test.current?.abort()
+  }, [open, live])
 
   const auto = useRef(false)
   useEffect(() => {
@@ -355,10 +358,17 @@ function BitrateRow({ cfg, update, peers, uplink, live, open, children }) {
   return (
     <div className="sp-row bitrate-row">
       <JellySlider value={cfg.bitrate} limit={limit} onChange={(bitrate) => update({ bitrate })} />
-      <IconButton label={busy ? 'Medindo' : 'Medir rede'} className={`gauge-btn ${busy ? 'is-busy' : ''}`} onClick={measure} magnetic={false}>
+      <IconButton label={busy ? 'Medindo' : 'Medir rede'} className={`gauge-btn ${busy ? 'is-busy' : ''}`} disabled={busy || live} onClick={measure} magnetic={false}>
         <Gauge size={16} strokeWidth={1.75} />
       </IconButton>
-      {children}
+      {!live && (
+        <button type="button" className="island-go" aria-label="Iniciar" data-tip="Iniciar" onClick={() => {
+          test.current?.abort()
+          onStart()
+        }}>
+          <span className="live-dot" />
+        </button>
+      )}
     </div>
   )
 }

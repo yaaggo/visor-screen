@@ -37,6 +37,12 @@ async function listApps() {
   )
 }
 
+// Prioridade de CPU/GPU do Visor inteiro (main + filhos: GPU, captura, encoder) durante a transmissao
+async function boost(on) {
+  if (!supported) return null
+  return JSON.parse(await run(['boost', String(process.pid), ...(on ? [] : ['normal'])]))
+}
+
 async function windowPid(hwnd) {
   if (!supported) return 0
   return Number(await run(['winpid', String(hwnd)])) || 0
@@ -74,4 +80,4 @@ function stopAll() {
   for (const id of [...captures.keys()]) stop(id)
 }
 
-module.exports = { supported, listApps, windowPid, start, stop, stopAll }
+module.exports = { supported, listApps, windowPid, boost, start, stop, stopAll }

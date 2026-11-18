@@ -1848,6 +1848,69 @@ button:disabled {
   pointer-events: none;
 }
 
+/* ---------- Diagnostico ---------- */
+.diag {
+  position: absolute;
+  top: 54px;
+  left: 14px;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: calc(100% - 28px);
+  max-height: calc(100% - 120px);
+  overflow: auto;
+  padding: 10px;
+  border-radius: var(--r-md);
+  background: rgb(10 10 10 / 0.94);
+  border: 1px solid rgb(255 255 255 / 0.08);
+  font-size: 11px;
+  animation: rise var(--t-med) var(--spring) both;
+}
+.dg-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.dg-name {
+  min-width: 56px;
+  margin-right: 2px;
+  color: var(--text);
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dg-cell {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 0.04);
+}
+.dg-k {
+  color: var(--faint);
+}
+.dg-v {
+  color: var(--text);
+  font-weight: 600;
+}
+.dg-cell.is-bad {
+  background: var(--white);
+}
+.dg-cell.is-bad .dg-k {
+  color: #555;
+}
+.dg-cell.is-bad .dg-v {
+  color: var(--ink);
+}
+.hud-btn.is-active {
+  background: var(--white);
+  color: var(--ink);
+}
+
 /* ---------- Keyframes ---------- */
 @keyframes rise {
   from {

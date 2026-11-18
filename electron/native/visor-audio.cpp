@@ -4,6 +4,7 @@
 //   visor-audio capture <pid>        PCM float32 LE, 48 kHz, estereo, no stdout (so o processo <pid> e filhos)
 //   visor-audio capture <pid> exclude   idem, mas TUDO menos o processo <pid> e filhos (audio do sistema sem eco)
 //   visor-audio winpid <hwnd>        pid dono da janela
+//   visor-audio boost <pid> [normal] CPU acima do normal e GPU alta para os processos do Visor
 //
 // Usa a API oficial de Application Loopback (AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK).
 // Build: electron/native/build.cmd (MSVC).
@@ -15,6 +16,7 @@
 #include <audioclientactivationparams.h>
 #include <audiopolicy.h>
 #include <psapi.h>
+#include <tlhelp32.h>
 #include <wrl/implements.h>
 #include <wrl/client.h>
 #include <fcntl.h>
@@ -142,6 +144,50 @@ static int cmdList() {
   return 0;
 }
 
+// ---------- boost ----------
+
+// D3DKMT_SCHEDULINGPRIORITYCLASS: 0 idle .. 3 above normal, 4 high, 5 realtime (realtime exige admin)
+typedef LONG(APIENTRY* SetGpuPriorityFn)(HANDLE, int);
+
+static int cmdBoost(DWORD root, bool normal) {
+  const auto image = processPath(root);
+  if (image.empty()) return 1;
+  std::vector<std::pair<DWORD, DWORD>> procs;  // pid, parent
+  HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  if (snap == INVALID_HANDLE_VALUE) return 1;
+  PROCESSENTRY32W pe{sizeof(pe)};
+  if (Process32FirstW(snap, &pe)) {
+    do {
+      procs.emplace_back(pe.th32ProcessID, pe.th32ParentProcessID);
+    } while (Process32NextW(snap, &pe));
+  }
+  CloseHandle(snap);
+  std::set<DWORD> tree{root};
+  for (bool grew = true; grew;) {
+    grew = false;
+    for (const auto& [pid, parent] : procs) {
+      if (tree.count(parent) && tree.insert(pid).second) grew = true;
+    }
+  }
+  HMODULE gdi = LoadLibraryW(L"gdi32.dll");
+  auto setGpu = gdi ? reinterpret_cast<SetGpuPriorityFn>(GetProcAddress(gdi, "D3DKMTSetProcessSchedulingPriorityClass")) : nullptr;
+  std::string out = "[";
+  for (DWORD pid : tree) {
+    if (_wcsicmp(processPath(pid).c_str(), image.c_str()) != 0) continue;
+    HANDLE h = OpenProcess(PROCESS_SET_INFORMATION | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!h) continue;
+    BOOL cpu = SetPriorityClass(h, normal ? NORMAL_PRIORITY_CLASS : ABOVE_NORMAL_PRIORITY_CLASS);
+    LONG gpu = setGpu ? setGpu(h, normal ? 2 /* NORMAL */ : 4 /* HIGH */) : -1;
+    CloseHandle(h);
+    if (out.size() > 1) out += ",";
+    out += "{\"pid\":" + std::to_string(pid) + ",\"cpu\":" + (cpu ? "true" : "false") + ",\"gpu\":" + std::to_string(gpu) + "}";
+  }
+  if (gdi) FreeLibrary(gdi);
+  out += "]";
+  fwrite(out.data(), 1, out.size(), stdout);
+  return 0;
+}
+
 // ---------- capture ----------
 
 class Activation : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
@@ -251,6 +297,7 @@ int wmain(int argc, wchar_t** argv) {
   std::wstring cmd = argv[1];
   if (cmd == L"list") return cmdList();
   if (cmd == L"capture" && argc >= 3) return cmdCapture((DWORD)_wtoi(argv[2]), argc >= 4 && std::wstring(argv[3]) == L"exclude");
+  if (cmd == L"boost" && argc >= 3) return cmdBoost((DWORD)_wtoi(argv[2]), argc >= 4 && std::wstring(argv[3]) == L"normal");
   if (cmd == L"winpid" && argc >= 3) {
     DWORD pid = 0;
     GetWindowThreadProcessId((HWND)(intptr_t)_wtoi64(argv[2]), &pid);

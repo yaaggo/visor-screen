@@ -1,10 +1,13 @@
 # Visor
 
-Compartilhamento de tela ate 1080p 60 fps com chat, em servidores publicos. Login so com usuario.
+Compartilhamento de tela ate 1080p 60 fps com chat, em servidores publicos. Login com usuario e senha curta.
 
 - Web: https://visor-screen.vercel.app
 - Desktop (Windows): `npm run dist:win` gera o instalador em `release/` — audio por aplicativo (ex.: so o jogo), placa de captura, bitrate ate 50 Mbps
-- Stack: Vite + React, Supabase (auth anonima, Postgres, Realtime), WebRTC, Electron, Vercel
+- Stack: Vite + React, Supabase (Auth, Postgres, Realtime), WebRTC, Electron, Vercel
+
+Durante a transmissao, abra o diagnostico pelo icone de atividade no palco. O transmissor acompanha os FPS de
+captura, codificacao e envio. O espectador acompanha a recepcao, a decodificacao e a conexao.
 
 ```
 npm install

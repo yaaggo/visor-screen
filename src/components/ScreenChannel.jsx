@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Eye, Maximize, MessageSquare, Minimize, Monitor, MonitorUp, Square, Volume2, VolumeX, X } from 'lucide-react'
+import { Activity, Eye, Maximize, MessageSquare, Minimize, Monitor, MonitorUp, Square, Volume2, VolumeX, X } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { ScreenRoom } from '../lib/screen.js'
 import { fmtMbps, getPreset } from '../lib/quality.js'
@@ -42,12 +42,14 @@ function useAudioApps(enabled) {
 export default function ScreenChannel({ channel, profile, chatChannel }) {
   const roomRef = useRef(null)
   const captureRef = useRef(null)
+  const starting = useRef(false)
   const [s, setS] = useState({ peers: [], sharing: false, local: null, remote: null, watching: null, viewers: 0, preset: '1080p60', bitrate: 0, uplink: null, stats: null, remoteAudio: false })
   const [chat, setChat] = useState(() => pref.get('visor.chatOpen', true))
   const [cfg, update] = useShareConfig()
   const [error, setError] = useState(false)
   const [panelOpen, setPanelOpen] = useState(false)
-  const apps = useAudioApps(panelOpen || s.sharing)
+  const needsAudioApps = cfg.kind !== 'device' && (panelOpen || (s.sharing && cfg.audioMode === 'all' && cfg.exclude.length > 0))
+  const apps = useAudioApps(needsAudioApps)
   const targetKey = JSON.stringify(audioTargets(cfg, apps))
 
   useEffect(() => {
@@ -57,6 +59,13 @@ export default function ScreenChannel({ channel, profile, chatChannel }) {
     room.join()
     return () => room.leave()
   }, [channel.id, profile.id, profile.username])
+
+  // Desktop: reduz a disputa por CPU/GPU enquanto transmite.
+  useEffect(() => {
+    if (!desktop || !window.visor.boost || !s.sharing) return
+    window.visor.boost(true).catch(() => {})
+    return () => { window.visor.boost(false).catch(() => {}) }
+  }, [s.sharing])
 
   // Ao vivo: aplica mudancas de qualidade, bitrate e audio sem reiniciar
   useEffect(() => {
@@ -70,6 +79,9 @@ export default function ScreenChannel({ channel, profile, chatChannel }) {
   }, [targetKey, s.sharing])
 
   const start = async () => {
+    if (starting.current) return false
+    starting.current = true
+    const room = roomRef.current
     const preset = getPreset(cfg.presetId)
     try {
       let cap
@@ -82,9 +94,9 @@ export default function ScreenChannel({ channel, profile, chatChannel }) {
       } else {
         cap = await captureWeb(cfg.kind, preset, cfg.audioMode === 'all')
       }
+      if (!(await room.startShare(cap, cfg.presetId, cfg.bitrate))) return false
       captureRef.current = cap
-      await roomRef.current.startShare(cap, cfg.presetId, cfg.bitrate)
-      roomRef.current.stopWatching()
+      room.stopWatching()
       return true
     } catch (err) {
       if (err?.name !== 'NotAllowedError' && err?.name !== 'AbortError') {
@@ -92,6 +104,8 @@ export default function ScreenChannel({ channel, profile, chatChannel }) {
         setTimeout(() => setError(false), 500)
       }
       return false
+    } finally {
+      starting.current = false
     }
   }
 
@@ -105,6 +119,7 @@ export default function ScreenChannel({ channel, profile, chatChannel }) {
           stream={stream}
           local={stream === s.local}
           stats={s.stats}
+          sendStats={s.sendStats}
           hasAudio={stream !== s.local && s.remoteAudio}
           watchingName={s.peers.find((p) => p.id === s.watching)?.name}
         />
@@ -168,7 +183,8 @@ export default function ScreenChannel({ channel, profile, chatChannel }) {
   )
 }
 
-function Stage({ stream, local, stats, watchingName, hasAudio }) {
+function Stage({ stream, local, stats, sendStats, watchingName, hasAudio }) {
+  const [diag, setDiag] = useState(() => pref.get('visor.diag', false))
   const video = useRef(null)
   const box = useRef(null)
   const [full, setFull] = useState(false)
@@ -182,7 +198,22 @@ function Stage({ stream, local, stats, watchingName, hasAudio }) {
     if (v.srcObject !== stream) v.srcObject = stream ?? null
     v.muted = local || muted || blocked
     v.volume = volume
-    if (stream && !local && !muted) {
+    if (stream && local) {
+      // A previa pode parar enquanto o jogo tem foco. As tracks seguem ativas no WebRTC.
+      const preview = () => {
+        if (!desktop || document.hasFocus()) v.play().catch(() => {})
+        else v.pause()
+      }
+      preview()
+      if (desktop) {
+        window.addEventListener('focus', preview)
+        window.addEventListener('blur', preview)
+        return () => {
+          window.removeEventListener('focus', preview)
+          window.removeEventListener('blur', preview)
+        }
+      }
+    } else if (stream && !muted) {
       v.muted = false
       v.play().catch(() => {
         // autoplay com som bloqueado: toca mudo e pede um clique
@@ -204,13 +235,14 @@ function Stage({ stream, local, stats, watchingName, hasAudio }) {
 
   return (
     <div ref={box} className={`stage ${stream ? 'has-stream' : ''}`} onDoubleClick={() => stream && toggleFull()}>
-      <video ref={video} autoPlay playsInline muted />
+      <video ref={video} autoPlay={!local} playsInline muted />
       {!stream && (
         <div className="stage-idle" aria-hidden>
           <span className="pulse-ring" />
           <Monitor size={30} strokeWidth={1.25} />
         </div>
       )}
+      {stream && diag && <Diagnostics local={local} stats={stats} sendStats={sendStats} />}
       {stream && (
         <div className={`stage-hud ${blocked ? 'is-pinned' : ''}`}>
           <span className="hud-chip">
@@ -219,9 +251,22 @@ function Stage({ stream, local, stats, watchingName, hasAudio }) {
           </span>
           {stats && !local && (
             <span className="hud-chip mono">
-              {stats.height || '-'}p · {stats.fps} · {fmtMbps(stats.kbps * 1000)}
+              {stats.height ? `${stats.height}p` : '–'} · {stats.decoded ?? '–'} · {stats.kbps == null ? '–' : fmtMbps(stats.kbps * 1000)}
             </span>
           )}
+          <IconButton
+            label="Diagnóstico"
+            className="hud-btn"
+            active={diag}
+            aria-pressed={diag}
+            magnetic={false}
+            onClick={() => {
+              setDiag(!diag)
+              pref.set('visor.diag', !diag)
+            }}
+          >
+            <Activity size={15} strokeWidth={1.75} />
+          </IconButton>
           <span className="hud-spacer" />
           {hasAudio && (
             <span className="hud-volume">
@@ -260,6 +305,82 @@ function Stage({ stream, local, stats, watchingName, hasAudio }) {
           </IconButton>
         </div>
       )}
+    </div>
+  )
+}
+
+// ---------- Diagnostico: onde os quadros se perdem ----------
+
+function implementation(name, powerEfficient) {
+  if (!name) return powerEfficient === true ? 'hardware' : null
+  if (/libvpx|openh264|ffmpeg|dav1d|libaom/i.test(name)) return 'software'
+  return name.match(/\(([^()]+)\)/)?.[1] ?? name
+}
+const ROUTE = { host: 'host', direta: 'direta', relay: 'TURN' }
+const LIMIT = { cpu: 'cpu', bandwidth: 'banda', other: 'outro' }
+const mbps = (kbps) => kbps == null ? null : (kbps / 1000).toFixed(1)
+const pct = (value) => value == null ? null : `${value}%`
+const ms = (value) => value == null ? null : `${value}ms`
+
+function Cell({ k, v, bad }) {
+  return (
+    <span className={`dg-cell ${bad ? 'is-bad' : ''}`}>
+      <span className="dg-k">{k}</span>
+      <span className="dg-v">{v ?? '–'}</span>
+    </span>
+  )
+}
+
+function Diagnostics({ local, stats, sendStats }) {
+  if (local) {
+    const v = sendStats?.viewers ?? []
+    return (
+      <div className="diag mono" role="group" aria-label="Diagnóstico da transmissão">
+        <div className="dg-row">
+          <Cell k="fps captura" v={sendStats?.capture} />
+        </div>
+        {v.map((x) => (
+          <div className="dg-row" key={x.id}>
+            <span className="dg-name">{x.name}</span>
+            <Cell k="fps codif." v={x.encoded} />
+            <Cell k="fps envio" v={x.fps} />
+            <Cell k="codec" v={x.codec} />
+            <Cell k="encoder" v={implementation(x.encoder, x.powerEfficient)} />
+            <Cell k="ms/q" v={x.encodeMs} />
+            <Cell k="mbps" v={mbps(x.kbps)} />
+            <Cell k="res" v={x.height ? `${x.height}p` : null} />
+            <Cell k="rtt" v={ms(x.rtt)} />
+            <Cell k="perda" v={pct(x.loss)} bad={x.loss > 1} />
+            <Cell k="rota" v={ROUTE[x.route]} />
+            {LIMIT[x.limit] && <Cell k="limite" v={LIMIT[x.limit]} bad />}
+          </div>
+        ))}
+      </div>
+    )
+  }
+  if (!stats) return null
+  return (
+    <div className="diag mono" role="group" aria-label="Diagnóstico da reprodução">
+      <div className="dg-row">
+        <Cell k="fps receb." v={stats.fps} />
+        <Cell k="fps decod." v={stats.decoded} />
+        <Cell k="descart" v={stats.dropped} bad={stats.dropped > 0} />
+        <Cell k="travou" v={stats.freezes} bad={stats.freezes > 0} />
+      </div>
+      <div className="dg-row">
+        <Cell k="res" v={stats.height ? `${stats.width}x${stats.height}` : null} />
+        <Cell k="mbps" v={mbps(stats.kbps)} />
+        <Cell k="codec" v={stats.codec} />
+        <Cell k="decoder" v={implementation(stats.decoder, stats.powerEfficient)} />
+        <Cell k="ms/q" v={stats.decodeMs} />
+      </div>
+      <div className="dg-row">
+        <Cell k="perda" v={pct(stats.loss)} bad={stats.loss > 1} />
+        <Cell k="jitter" v={ms(stats.jitter)} />
+        <Cell k="buffer" v={ms(stats.bufferMs)} />
+        <Cell k="rtt" v={ms(stats.rtt)} />
+        <Cell k="rota" v={ROUTE[stats.route]} />
+      </div>
     </div>
   )
 }

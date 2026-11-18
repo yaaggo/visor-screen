@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-18, fase 3 (login com senha curta, audio por exclusao, dropdowns verticais, slider fluido).
+Ultima atualizacao: 2026-11-18, fase 4 (fluidez e diagnostico da transmissao, v1.2.0).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -18,14 +18,14 @@ Duas formas de uso, mesmo codigo React:
 Paleta preto/branco/cinza, sem emoji, sem textos longos: so icones (lucide) e motion.
 Referencia de motion: https://designbookmark.com/motion
 
-- GitHub: https://github.com/yaaggo/visor-screen (PRIVADO), branch `main`. Releases com os instaladores (v1.0.0, v1.1.0)
+- GitHub: https://github.com/yaaggo/visor-screen (PRIVADO), branch `main`. Instaladores nas GitHub Releases
 - Supabase: projeto `visor-screen`, ref `gyqnzjjvugrfpbnfjbrf`, org `yaaggo's`, `sa-east-1`, plano gratuito
 - Vercel: projeto `yagos-projects-81a2fc4d/visor-screen` (linkado em `.vercel/`), functions em `gru1`
 
 ## Stack
 
 - Vite 8 + React 19 (JS, sem TypeScript). `base: './'` para funcionar em `file://` no Electron
-- `@supabase/supabase-js` — auth anonima, Postgres + RLS, Realtime (postgres_changes, broadcast, presence)
+- `@supabase/supabase-js` — auth de e-mail/senha, Postgres + RLS, Realtime (postgres_changes, broadcast, presence)
 - WebRTC nativo, malha 1 -> N (quem transmite abre uma conexao por espectador)
 - Electron 45 (Chromium 156) + electron-builder (NSIS + portable)
 - Helper nativo C++ `visor-audio.exe` (MSVC, API Application Loopback do Windows)
@@ -50,7 +50,8 @@ src/
   lib/env.js       desktop? (window.visor) e API_BASE (absoluto quando file://)
   lib/supabase.js, lib/route.js
   lib/quality.js   presets, BITRATES, tuneSender(), mungeAnswer() (SDP: x-google-*, Opus estereo 256k)
-  lib/screen.js    ScreenRoom: presenca, sinalizacao, peers, stats, uplink (availableOutgoingBitrate)
+  lib/screen.js    ScreenRoom: presenca, sinalizacao, peers, coleta de stats
+  lib/screenStats.js   metricas de captura, codificacao, envio, recepcao e ICE a partir de getStats()
   lib/sources.js   captureWeb / captureDesktop / captureDevice / listDevices / matchAudio
   lib/appAudio.js  AppAudioMixer: AudioWorklet por app -> MediaStreamDestination (1 track)
   lib/net.js       measureUpload(): 4 envios paralelos de 4 MB, RTT aquecido
@@ -101,7 +102,8 @@ Em 2026-11-18 todos os usuarios foram apagados na migracao para senha; o servido
 - Calculo dos alvos (`audioTargets` em ScreenChannel.jsx):
   Mudo -> nada; Tudo sem exclusoes -> 1 fluxo `exclude` do proprio Visor (sistema inteiro, sem eco);
   Tudo com exclusoes -> 1 fluxo `include` por app NAO excluido (a API do Windows so exclui 1 processo por fluxo).
-  A lista de apps atualiza a cada 3 s enquanto o painel esta aberto ou ao vivo; apps que comecam a tocar entram sozinhos.
+  A lista de apps atualiza a cada 3 s enquanto o painel esta aberto ou ao vivo no modo Tudo com exclusoes.
+  Apps que comecam a tocar entram sozinhos.
 - `audio.cjs` remove da lista os processos com o mesmo executavel do Visor (o audio do Electron roda num filho).
 - Verificado (Electron, CDP): app excluido nao capturado, os demais com ~190 blocos/2 s cada.
 
@@ -138,8 +140,29 @@ Medido em 2026-11-18 nesta maquina (Electron/Chromium 156, loopback local, conte
 - Degraus: 2, 3, 4, 6, 8, 10, 12, 16, 20, 25, 30, 40, 50 Mbps. Padrao por preset: 1080p60=12, 1080p30=8, 720p60=6, 720p30=4, 480p30=2.
 - Slider (`JellySlider`): durante o arraste o polegar segue o ponteiro sem transicao; ao soltar assenta no degrau com mola.
 - No slider: marca cinza = limite da rede (teste de upload antes; `availableOutgoingBitrate` real ao vivo).
-  O teste roda sozinho na 1a abertura do painel (cache de 1 h) e ajusta o bitrate para o maximo seguro.
+  O teste roda sozinho na 1a abertura do painel (cache de 1 h) e atualiza a marca. Ele preserva o bitrate escolhido
+  e cancela os uploads ao fechar os ajustes ou iniciar a transmissao. Durante a transmissao, o WebRTC mede a banda.
 - TURN (se ativado) passa o video pela Cloudflare: 50 Mbps ~ 22 GB/h por espectador retransmitido (free tier 1 TB/mes).
+
+### Fluidez e diagnostico (1.2.0)
+
+- No Windows, o helper usa `ABOVE_NORMAL_PRIORITY_CLASS` para CPU e solicita `D3DKMT_SCHEDULINGPRIORITYCLASS_HIGH`
+  para GPU no processo principal e nos filhos do Visor. O sandbox pode recusar a prioridade de GPU em alguns processos.
+  O main enfileira as chamadas e solicita prioridade normal ao parar, sair do canal, recarregar ou perder o renderer.
+- A previa do transmissor pausa quando o Visor desktop perde o foco. A captura e os envios continuam.
+- A captura desktop continua via `getUserMedia` e fonte escolhida pelo usuario. O Claude comparou o caminho
+  `getDisplayMedia` do Electron e uma flag WGC, sem ganho consistente que justificasse a troca.
+- Na barra do palco, o icone de atividade abre o diagnostico. Com um espectador conectado, o transmissor ve FPS
+  de captura, codificacao e envio, codec, encoder, ms por quadro, bitrate, resolucao, RTT, perda, rota e limitacao
+  por espectador. O espectador ve FPS recebido e decodificado, descartes no intervalo, travamentos acumulados,
+  codec/decoder, ms por quadro, bitrate, resolucao, perda, jitter, buffer e RTT. `–` indica amostra indisponivel.
+- Para investigar uma queda, repita a mesma cena de jogo com um espectador. Anote as duas leituras durante a
+  queda. FPS baixo ja na captura indica que os quadros nao chegam ao encoder. FPS de captura alto com codificacao
+  baixa direciona a analise para o encoder/custo de processamento. Compare FPS enviado e recebido com perda, RTT,
+  buffer e FPS decodificado para avaliar rede e reproducao. Telas estaticas podem produzir menos quadros.
+- Use `window.__room.sendStats` no transmissor e `window.__room.stats` no espectador em modo dev.
+  `nvidia-smi --query-gpu=utilization.gpu,utilization.encoder --format=csv -l 1` ajuda a correlacionar a carga NVIDIA.
+  Para repetir a comparacao, mantenha cena, preset, bitrate, espectadores e limite de FPS do jogo iguais.
 
 ### TURN
 Sem TURN, NAT simetrico/CGNAT pode nao conectar. Para ativar (Cloudflare Realtime TURN):
@@ -158,7 +181,7 @@ npm run desktop:dev         # Electron apontando para o vite dev (rode `npm run 
                             # (visor-screen-dev) e nao tem trava de instancia unica: convive com o app instalado aberto
 npm run desktop             # build + Electron com dist/
 npm run native              # recompila electron/native/bin/visor-audio.exe
-npm run dist:win            # gera release/Visor-Setup-1.0.0.exe e release/Visor-1.0.0-portable.exe
+npm run dist:win            # gera release/Visor-Setup-<versao>.exe e release/Visor-<versao>-portable.exe
 npx supabase db push --remote --yes
 npx supabase config diff / config push --yes
 npx vercel env ls
@@ -180,19 +203,49 @@ Feito:
   marca de limite; volume do espectador; H264 preferido; correcao de sessao anonima invalida; functions em gru1
 - Fase 3: login com senha curta, audio Mudo/Tudo + exclusoes, dropdowns verticais, slider fluido, tooltips do painel
   abrindo para baixo (e acima na linha do bitrate) e sobre as linhas vizinhas
-- Instaladores em `release/` e GitHub Releases (v1.0.0, v1.1.0) (nao assinados: SmartScreen avisa na 1a execucao)
+- Fase 4: prioridade de CPU/GPU durante a live no Windows, previa local pausada sem foco, diagnostico nos dois lados,
+  teste de upload fora da live e bitrate preservado
+- Instaladores Windows em `release/` e nas GitHub Releases (sem assinatura, com aviso do SmartScreen).
+  A 1.2.0 usa `Visor-Setup-1.2.0.exe` e `Visor-1.2.0-portable.exe`.
 - Repositorio git criado e enviado (privado) e conectado a Vercel: push em `main` = deploy de producao; outras branches = preview
 - Servidor `estudio` pertence ao usuario `yago`; dados de teste removidos
 
+Validacao da fase 4 (RTX 3050 Laptop, Electron 45.3.4):
+- Captura real de janela no painel secundario do notebook (AMD Radeon integrada) com animacao WebGL a 180 fps,
+  preset de captura 1920x1080 a 60 fps, bitrate de 12 Mbps, um espectador WebRTC local, sinalizacao simulada,
+  sem audio. Rodadas de 10 amostras. As medianas da captura
+  foram 38 e 39 fps com prioridade normal, 39 e 42 fps com prioridade elevada. Minimos de 30 fps sem boost
+  e de 36 fps com boost. Codificacao, envio, recepcao e decodificacao acompanharam a captura, com H.264
+  NVIDIA, decoder D3D11, sem perda ou descartes nas amostras. O WebRTC tambem reduziu a resolucao enviada
+  a 960x512 e acusou limite de banda com o padrao sintetico. O boost ajudou os minimos neste teste curto.
+- No monitor principal, ligado a RTX 3050, com a mesma animacao, preset e bitrate, o WebGL usou
+  D3D11/NVIDIA e o encoder foi H.264/NVIDIA. Oito amostras por rodada. Mediana de 51 fps de captura nas
+  duas rodadas (49–52 normal, 49–51 com boost), com envio acompanhando a captura e sem perda ou descartes
+  nas amostras. O WebRTC enviou a 960x516 no fim de ambas as rodadas. As telas usam escalas diferentes
+  (1,25 no painel AMD e 1 no monitor NVIDIA), portanto a comparacao envolve os dois caminhos completos.
+- O helper ajustou CPU em 5 de 5 processos e GPU em 4 de 5. O teste voltou a prioridade ao normal, alternou
+  para o preset 720p30 durante a mesma sessao e verificou o encerramento das tracks e a limpeza das estatisticas.
+- A interface do Electron foi testada com dois canais de teste no mesmo renderer e sinalizacao simulada.
+  O diagnostico abriu dos dois lados, o envio continuou com a previa pausada, e o teste de rede foi cancelado
+  ao iniciar ou fechar ajustes. Um teste de rede concluido preservou o bitrate de 6 Mbps.
+- `--enable-features=WebRtcAllowWgcUsingTexture` entregou a track de captura, mas o teste local parou de
+  responder antes de entregar amostras RTP. A 1.2.0 usa a configuracao padrao de captura do Electron.
+
 Nao verificado:
+- Fluidez em uma partida real, FPS do jogo com boost e comportamento quando a GPU fica saturada.
 - Transmissao real entre duas maquinas/redes diferentes (so loopback local e mesma maquina)
 - Captura `include` de um jogo especifico tocando som (a API e a mesma do modo sistema, que foi verificado)
 - Placa de captura fisica (o painel do navegador de teste bloqueia camera)
 
 Proximos passos sugeridos:
+- Se o FPS de captura continuar baixo numa partida real no monitor principal, comparar com um prototipo
+  desktop de WGC/D3D11 e encoder de hardware, preservando a interface React. A prova de conceito deve
+  medir FPS capturado, codificado e entregue ao mesmo espectador WebRTC no navegador.
 - Repo e privado: so quem tem acesso baixa o instalador. Para amigos baixarem, tornar o repo publico ou criar um repo
   publico so de releases; depois adicionar botao de download na versao web
-- Nova versao do desktop: subir `version` no package.json, `npm run dist:win`, `gh release create vX.Y.Z release/*.exe`
+- Nova versao do desktop: `npm version X.Y.Z --no-git-tag-version`, `npm run native` se o C++ mudou,
+  `npm run dist:win`. Enviar o commit a `main` e criar a release com os dois executaveis da versao, conferindo
+  que o tag aponta para o commit publicado.
 - Auto-update do desktop (electron-updater + GitHub Releases) e assinatura de codigo
 - TURN para conectividade em qualquer rede
 - SFU (Cloudflare Calls / LiveKit) se precisar de muitos espectadores em bitrate alto

@@ -16,6 +16,18 @@ if (DEV_URL) app.setPath('userData', path.join(app.getPath('appData'), 'visor-sc
 else if (!app.requestSingleInstanceLock()) app.quit()
 
 let win = null
+let priorityQueue = Promise.resolve()
+let priorityRequested = false
+
+function setStreamingPriority(enabled) {
+  if (enabled === priorityRequested) return priorityQueue
+  priorityRequested = enabled
+  priorityQueue = priorityQueue.then(() => audio.boost(enabled)).catch((err) => {
+    console.warn('[visor] streaming priority:', err.message)
+    return null
+  })
+  return priorityQueue
+}
 
 function createWindow() {
   win = new BrowserWindow({
@@ -53,8 +65,13 @@ function createWindow() {
   if (DEV_URL) win.loadURL(DEV_URL)
   else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
 
+  win.webContents.on('render-process-gone', () => setStreamingPriority(false))
+  win.webContents.on('did-start-navigation', (details) => {
+    if (details.isMainFrame && !details.isSameDocument) setStreamingPriority(false)
+  })
   win.on('closed', () => {
     audio.stopAll()
+    setStreamingPriority(false)
     win = null
   })
 }
@@ -93,6 +110,10 @@ app.whenReady().then(() => {
           }
         }),
     )
+  })
+  ipcMain.handle('boost', (e, on) => {
+    if (e.sender !== win?.webContents || e.senderFrame !== e.sender.mainFrame || typeof on !== 'boolean') return null
+    return setStreamingPriority(on)
   })
   ipcMain.handle('audio:supported', () => audio.supported)
   ipcMain.handle('audio:apps', () => audio.listApps().catch(() => []))
