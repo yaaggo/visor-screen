@@ -17,6 +17,7 @@ Duas formas de uso, mesmo codigo React:
 Paleta preto/branco/cinza, sem emoji, sem textos longos: so icones (lucide) e motion.
 Referencia de motion: https://designbookmark.com/motion
 
+- GitHub: https://github.com/yaaggo/visor-screen (PRIVADO), branch `main`. Releases com os instaladores (v1.0.0)
 - Supabase: projeto `visor-screen`, ref `gyqnzjjvugrfpbnfjbrf`, org `yaaggo's`, `sa-east-1`, plano gratuito
 - Vercel: projeto `yagos-projects-81a2fc4d/visor-screen` (linkado em `.vercel/`), functions em `gru1`
 
@@ -161,7 +162,8 @@ Feito:
 - Fase 2: app desktop Electron; audio por aplicativo e "sistema sem eco" via helper nativo; dispositivos de video
   (placa de captura) com audio do dispositivo; slider de bitrate em degraus ate 50 Mbps com teste de rede e
   marca de limite; volume do espectador; H264 preferido; correcao de sessao anonima invalida; functions em gru1
-- Instaladores gerados em `release/` (nao assinados: o Windows SmartScreen mostra aviso na 1a execucao)
+- Instaladores gerados em `release/` e publicados em GitHub Releases v1.0.0 (nao assinados: SmartScreen avisa na 1a execucao)
+- Repositorio git criado e enviado (privado). Vercel ainda faz deploy pela CLI, nao por push
 - Servidor `estudio` pertence ao usuario `yago`; dados de teste removidos
 
 Nao verificado:
@@ -170,9 +172,10 @@ Nao verificado:
 - Placa de captura fisica (o painel do navegador de teste bloqueia camera)
 
 Proximos passos sugeridos:
-- Git: pasta ainda NAO e repositorio. `git init`, repo GitHub, conectar a Vercel; publicar o instalador em GitHub Releases
-  (Supabase Storage free tem limite de 50 MB por arquivo; o instalador tem ~120 MB)
-- Botao de download do app na versao web (depois de definir onde hospedar o instalador)
+- Repo e privado: so quem tem acesso baixa o instalador. Para amigos baixarem, tornar o repo publico ou criar um repo
+  publico so de releases; depois adicionar botao de download na versao web
+- Conectar o repo a Vercel (`vercel git connect`) para deploy automatico por push
+- Nova versao do desktop: subir `version` no package.json, `npm run dist:win`, `gh release create vX.Y.Z release/*.exe`
 - Auto-update do desktop (electron-updater + GitHub Releases) e assinatura de codigo
 - TURN para conectividade em qualquer rede
 - SFU (Cloudflare Calls / LiveKit) se precisar de muitos espectadores em bitrate alto
