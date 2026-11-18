@@ -1,0 +1,10 @@
+node_modules
+dist
+.env*
+supabase
+README.md
+AGENTS.md
+CLAUDE.md
+.claude
+release
+electron

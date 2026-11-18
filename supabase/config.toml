@@ -1,0 +1,13 @@
+# Config declarativa minima. `supabase config push` so altera o que esta declarado aqui.
+# Projeto remoto: visor-screen (gyqnzjjvugrfpbnfjbrf), org yaaggo's, sa-east-1.
+project_id = "gta-screen"
+
+[auth]
+site_url = "https://visor-screen.vercel.app"
+additional_redirect_urls = ["http://localhost:5173"]
+# Login simplificado: sessao anonima + username em public.profiles
+enable_anonymous_sign_ins = true
+
+[auth.rate_limit]
+# Logins anonimos por hora por IP
+anonymous_users = 30

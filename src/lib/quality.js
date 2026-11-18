@@ -1,0 +1,83 @@
+// Presets de resolucao/fps. Teto: 1080p 60 fps.
+export const PRESETS = [
+  { id: '1080p60', res: '1080', fps: 60, width: 1920, height: 1080, bitrate: 12_000_000 },
+  { id: '1080p30', res: '1080', fps: 30, width: 1920, height: 1080, bitrate: 8_000_000 },
+  { id: '720p60', res: '720', fps: 60, width: 1280, height: 720, bitrate: 6_000_000 },
+  { id: '720p30', res: '720', fps: 30, width: 1280, height: 720, bitrate: 4_000_000 },
+  { id: '480p30', res: '480', fps: 30, width: 854, height: 480, bitrate: 2_000_000 },
+]
+export const DEFAULT_PRESET = '1080p60'
+export const getPreset = (id) => PRESETS.find((p) => p.id === id) ?? PRESETS[0]
+
+// Degraus de bitrate (Mbps). Teto de 50 Mbps: ver AGENTS.md > "Analise de bitrate".
+export const BITRATES = [2, 3, 4, 6, 8, 10, 12, 16, 20, 25, 30, 40, 50].map((m) => m * 1_000_000)
+export const MAX_BITRATE = BITRATES[BITRATES.length - 1]
+export const AUDIO_BITRATE = 256_000
+
+export const snapBitrate = (bps) => BITRATES.reduce((best, b) => (b <= bps ? b : best), BITRATES[0])
+export const fmtMbps = (bps) => (bps >= 10e6 ? Math.round(bps / 1e6) : Math.round(bps / 1e5) / 10) + 'M'
+
+export function videoConstraints(preset) {
+  return {
+    width: { ideal: preset.width, max: preset.width },
+    height: { ideal: preset.height, max: preset.height },
+    frameRate: { ideal: preset.fps, max: preset.fps },
+  }
+}
+
+// Aplica bitrate/fps maximos e preferencia de degradacao em um sender de video
+export async function tuneSender(sender, preset, bitrate) {
+  const params = sender.getParameters()
+  if (!params.encodings?.length) params.encodings = [{}]
+  const enc = params.encodings[0]
+  if (sender.track?.kind === 'audio') {
+    enc.maxBitrate = AUDIO_BITRATE
+    enc.priority = 'high'
+    enc.networkPriority = 'high'
+  } else {
+    enc.maxBitrate = bitrate
+    enc.maxFramerate = preset.fps
+    enc.scaleResolutionDownBy = 1
+    enc.priority = 'high'
+    enc.networkPriority = 'high'
+    params.degradationPreference = preset.fps >= 60 ? 'maintain-framerate' : 'maintain-resolution'
+  }
+  try {
+    await sender.setParameters(params)
+  } catch {
+    delete params.degradationPreference
+    await sender.setParameters(params).catch(() => {})
+  }
+}
+
+// Ajusta a SDP de resposta recebida pelo transmissor:
+// - video: libera BWE ate MAX_BITRATE e comeca alto (x-google-*)
+// - audio: Opus estereo, 256 kbps, sem DTX
+export function mungeAnswer(sdp, bitrate) {
+  const start = Math.round(Math.min(bitrate, 20_000_000) / 2000) // kbps, metade do alvo
+  const lines = sdp.split('\r\n')
+  const opus = new Set()
+  const video = new Set()
+  let section = ''
+  for (const l of lines) {
+    if (l.startsWith('m=')) section = l.slice(2, 7)
+    const m = l.match(/^a=rtpmap:(\d+) ([\w-]+)\//)
+    if (!m) continue
+    if (section === 'audio' && m[2].toLowerCase() === 'opus') opus.add(m[1])
+    if (section === 'video' && !/rtx|red|ulpfec|flexfec/i.test(m[2])) video.add(m[1])
+  }
+  const out = lines.map((l) => {
+    const m = l.match(/^a=fmtp:(\d+) (.*)$/)
+    if (!m) return l
+    const [, pt, cfg] = m
+    if (opus.has(pt)) {
+      const keep = cfg.split(';').filter((p) => !/^(stereo|sprop-stereo|maxaveragebitrate|usedtx|cbr)=/.test(p))
+      return `a=fmtp:${pt} ${[...keep, 'stereo=1', 'sprop-stereo=1', `maxaveragebitrate=${AUDIO_BITRATE}`, 'usedtx=0'].join(';')}`
+    }
+    if (video.has(pt) && !/x-google-max-bitrate/.test(cfg)) {
+      return `a=fmtp:${pt} ${cfg};x-google-start-bitrate=${start};x-google-max-bitrate=${MAX_BITRATE / 1000};x-google-min-bitrate=500`
+    }
+    return l
+  })
+  return out.join('\r\n')
+}

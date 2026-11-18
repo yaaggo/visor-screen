@@ -1,0 +1,9 @@
+node_modules/
+dist/
+release/
+.vercel/
+.env*
+!.env.example
+supabase/.temp/
+supabase/.branches/
+electron/native/bin/*.obj

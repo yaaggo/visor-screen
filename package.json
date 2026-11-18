@@ -1,0 +1,79 @@
+{
+  "name": "visor-screen",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "native": "cmd /c electron\\native\\build.cmd",
+    "desktop": "vite build && electron .",
+    "desktop:dev": "cross-env VISOR_DEV_URL=http://localhost:5173 electron .",
+    "dist:win": "vite build && electron-builder --win"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@fontsource-variable/inter": "5.2.8",
+    "@supabase/supabase-js": "2.119.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "cross-env": "^10.1.0",
+    "electron": "^45.3.4",
+    "electron-builder": "^26.18.0",
+    "lucide-react": "1.75.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "vite": "8.3.8"
+  },
+  "main": "electron/main.cjs",
+  "description": "Visor - compartilhamento de tela",
+  "author": "Visor",
+  "build": {
+    "appId": "app.visor.desktop",
+    "productName": "Visor",
+    "copyright": "Visor",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "electron/*.cjs",
+      "electron/icon.png",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "electron/native/bin/visor-audio.exe",
+        "to": "bin/visor-audio.exe"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "electron/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "Visor-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Visor-${version}-portable.${ext}"
+    }
+  }
+}
