@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AppWindow, AudioLines, Gauge, LoaderCircle, Monitor, RefreshCw, Speaker, Video, VolumeX } from 'lucide-react'
+import { AppWindow, AudioLines, Check, ChevronDown, Gauge, LoaderCircle, Monitor, RefreshCw, Speaker, Video, VolumeX } from 'lucide-react'
 import { BITRATES, PRESETS, fmtMbps, getPreset, snapBitrate } from '../lib/quality.js'
 import { desktop } from '../lib/env.js'
 import { listDevices, matchAudio } from '../lib/sources.js'
@@ -24,15 +24,17 @@ export const pref = {
   },
 }
 
+export const exeKey = (exe) => exe.toLowerCase()
+
 // Estado de configuracao da transmissao (persistido por usuario no navegador/app)
 export function useShareConfig() {
   const [cfg, setCfg] = useState(() => ({
     kind: pref.get('visor.kind', 'monitor'), // monitor | window | device
     sourceId: null,
-    sourcePid: 0,
     deviceId: pref.get('visor.device', null),
     deviceAudioId: pref.get('visor.deviceAudio', null),
-    audio: pref.get('visor.audio', desktop ? [] : true), // desktop: ['system'] | [pid...]; web: boolean
+    audioMode: pref.get('visor.audioMode', 'all'), // off | all
+    exclude: pref.get('visor.exclude', []), // exes (minusculo) que NAO entram no audio (so desktop)
     presetId: pref.get('visor.preset', '1080p60'),
     bitrate: pref.get('visor.bitrate', getPreset(pref.get('visor.preset', '1080p60')).bitrate),
   }))
@@ -42,7 +44,8 @@ export function useShareConfig() {
       pref.set('visor.kind', next.kind)
       pref.set('visor.device', next.deviceId)
       pref.set('visor.deviceAudio', next.deviceAudioId)
-      pref.set('visor.audio', desktop && Array.isArray(next.audio) ? next.audio.filter((a) => a === 'system') : next.audio)
+      pref.set('visor.audioMode', next.audioMode)
+      pref.set('visor.exclude', next.exclude)
       pref.set('visor.preset', next.presetId)
       pref.set('visor.bitrate', next.bitrate)
       return next
@@ -51,7 +54,7 @@ export function useShareConfig() {
   return [cfg, update]
 }
 
-export default function SharePanel({ cfg, update, live, open, peers, uplink, onStart }) {
+export default function SharePanel({ cfg, update, live, open, peers, uplink, apps, onStart }) {
   const preset = getPreset(cfg.presetId)
   const fpsOptions = PRESETS.filter((p) => p.res === preset.res).map((p) => p.fps)
   const pickPreset = (res, fps) => {
@@ -66,7 +69,7 @@ export default function SharePanel({ cfg, update, live, open, peers, uplink, onS
           <Segmented
             label="Fonte"
             value={cfg.kind}
-            onChange={(kind) => update({ kind, sourceId: null, sourcePid: 0 })}
+            onChange={(kind) => update({ kind, sourceId: null })}
             options={[
               { value: 'monitor', label: 'Tela inteira', tip: 'Tela', icon: <Monitor size={16} strokeWidth={1.75} /> },
               { value: 'window', label: 'Janela', tip: 'Janela', icon: <AppWindow size={16} strokeWidth={1.75} /> },
@@ -78,8 +81,7 @@ export default function SharePanel({ cfg, update, live, open, peers, uplink, onS
 
       {!live && open && desktop && cfg.kind !== 'device' && <SourceGrid cfg={cfg} update={update} />}
       {!live && open && cfg.kind === 'device' && <DevicePicker cfg={cfg} update={update} />}
-
-      {cfg.kind !== 'device' && open && (desktop ? <AppAudioPicker cfg={cfg} update={update} /> : <WebAudioToggle cfg={cfg} update={update} />)}
+      {cfg.kind !== 'device' && open && <AudioPicker cfg={cfg} update={update} apps={apps} />}
 
       <div className="sp-row">
         <Segmented
@@ -109,6 +111,23 @@ export default function SharePanel({ cfg, update, live, open, peers, uplink, onS
   )
 }
 
+// ---------- Dropdown vertical que abre dentro do painel (conceito "Spring dropdown") ----------
+
+function Dropdown({ label, trigger, children }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className={`dd ${open ? 'is-open' : ''}`}>
+      <button type="button" className="dd-trigger" aria-expanded={open} aria-label={label} onClick={() => setOpen((v) => !v)}>
+        {trigger}
+        <ChevronDown size={14} strokeWidth={1.75} className="dd-chev" />
+      </button>
+      <div className="dd-body" inert={!open}>
+        <div className="dd-inner">{children}</div>
+      </div>
+    </div>
+  )
+}
+
 // ---------- Fontes (desktop) ----------
 
 function SourceGrid({ cfg, update }) {
@@ -116,8 +135,7 @@ function SourceGrid({ cfg, update }) {
   const [spin, setSpin] = useState(false)
   const load = useCallback(async () => {
     setSpin(true)
-    const list = await window.visor.sources()
-    setSources(list)
+    setSources(await window.visor.sources())
     setSpin(false)
   }, [])
   useEffect(() => {
@@ -127,9 +145,8 @@ function SourceGrid({ cfg, update }) {
   const want = cfg.kind === 'monitor' ? 'screen' : 'window'
   const items = (sources ?? []).filter((s) => s.kind === want)
 
-  // seleciona a primeira tela automaticamente
   useEffect(() => {
-    if (!cfg.sourceId && want === 'screen' && items[0]) update({ sourceId: items[0].id, sourcePid: 0 })
+    if (!cfg.sourceId && want === 'screen' && items[0]) update({ sourceId: items[0].id })
   }, [items, cfg.sourceId, want, update])
 
   return (
@@ -142,7 +159,7 @@ function SourceGrid({ cfg, update }) {
             className={`source ${cfg.sourceId === s.id ? 'is-on' : ''}`}
             style={{ animationDelay: `${i * 30}ms` }}
             aria-label={s.name}
-            onClick={() => update({ sourceId: s.id, sourcePid: s.pid || 0 })}
+            onClick={() => update({ sourceId: s.id })}
           >
             <span className="source-thumb">{s.thumb ? <img src={s.thumb} alt="" /> : <Monitor size={20} strokeWidth={1.25} />}</span>
             <span className="source-name">
@@ -157,6 +174,73 @@ function SourceGrid({ cfg, update }) {
         <RefreshCw size={14} strokeWidth={1.75} />
       </IconButton>
     </div>
+  )
+}
+
+// ---------- Audio: Mudo / Tudo + apps excluidos ----------
+
+function AudioPicker({ cfg, update, apps }) {
+  const off = cfg.audioMode === 'off'
+  const running = new Set(apps.map((a) => exeKey(a.exe)))
+  // apps rodando + excluidos que nao estao abertos agora (para poder desmarcar)
+  const rows = [
+    ...apps.filter((a, i, all) => all.findIndex((b) => exeKey(b.exe) === exeKey(a.exe)) === i),
+    ...cfg.exclude.filter((x) => !running.has(x)).map((x) => ({ exe: x, offline: true })),
+  ]
+  const excluded = cfg.exclude.length
+
+  const toggle = (exe) =>
+    update((c) => {
+      const k = exeKey(exe)
+      return { exclude: c.exclude.includes(k) ? c.exclude.filter((x) => x !== k) : [...c.exclude, k] }
+    })
+
+  return (
+    <Dropdown
+      label="Audio"
+      trigger={
+        <>
+          <AudioLines size={14} strokeWidth={1.75} className="dd-lead" />
+          {off ? <VolumeX size={14} strokeWidth={1.75} /> : <Speaker size={14} strokeWidth={1.75} />}
+          {!off && desktop && excluded > 0 && <span className="dd-badge mono">-{excluded}</span>}
+        </>
+      }
+    >
+      <Segmented
+        label="Audio"
+        size="sm"
+        value={cfg.audioMode}
+        onChange={(audioMode) => update({ audioMode })}
+        options={[
+          { value: 'off', label: 'Mudo', icon: <VolumeX size={14} strokeWidth={1.75} /> },
+          { value: 'all', label: 'Tudo', icon: <Speaker size={14} strokeWidth={1.75} /> },
+        ]}
+      />
+      {desktop && (
+        <ul className={`dd-list ${off ? 'is-disabled' : ''}`} role="group" aria-label="Sem audio">
+          {rows.map((a) => {
+            const k = exeKey(a.exe)
+            const on = cfg.exclude.includes(k)
+            return (
+              <li key={k}>
+                <button type="button" role="checkbox" aria-checked={on} className={`dd-row ${on ? 'is-on' : ''} ${a.offline ? 'is-offline' : ''}`} onClick={() => toggle(a.exe)}>
+                  <span className="dd-check">{on && <VolumeX size={11} strokeWidth={2.25} />}</span>
+                  {a.icon ? <img src={a.icon} alt="" className="mono-icon" /> : <AudioLines size={14} strokeWidth={1.75} className="dd-icon" />}
+                  <span className="dd-name">{a.exe.replace(/\.exe$/i, '')}</span>
+                  {a.title && <span className="dd-sub">{a.title}</span>}
+                  {a.active && <span className="chip-level" aria-hidden />}
+                </button>
+              </li>
+            )
+          })}
+          {!rows.length && (
+            <li className="dd-empty">
+              <AudioLines size={16} strokeWidth={1.25} />
+            </li>
+          )}
+        </ul>
+      )}
+    </Dropdown>
   )
 }
 
@@ -184,6 +268,7 @@ function DevicePicker({ cfg, update }) {
   }, [devs, cfg.deviceId, update])
 
   if (!devs) return <div className="sp-block sp-loading"><LoaderCircle size={16} className="spin-icon" /></div>
+  const audio = devs.audio.find((a) => a.id === cfg.deviceAudioId)
   return (
     <>
       <div className="chips" role="listbox" aria-label="Video">
@@ -200,91 +285,34 @@ function DevicePicker({ cfg, update }) {
         ))}
         {!devs.video.length && <span className="sp-empty"><Video size={18} strokeWidth={1.25} /></span>}
       </div>
-      <div className="chips" role="listbox" aria-label="Audio do dispositivo">
-        <span className="chips-icon" data-tip="Audio"><AudioLines size={14} strokeWidth={1.75} /></span>
-        <button type="button" className={`chip ${!cfg.deviceAudioId ? 'is-on' : ''}`} aria-label="Sem audio" onClick={() => update({ deviceAudioId: null })}>
-          <VolumeX size={14} strokeWidth={1.75} />
-        </button>
-        {devs.audio.map((a) => (
-          <button key={a.id} type="button" className={`chip ${cfg.deviceAudioId === a.id ? 'is-on' : ''}`} onClick={() => update({ deviceAudioId: a.id })}>
-            <span>{a.label}</span>
-          </button>
-        ))}
-      </div>
+      <Dropdown
+        label="Audio do dispositivo"
+        trigger={
+          <>
+            <AudioLines size={14} strokeWidth={1.75} className="dd-lead" />
+            {audio ? <span className="dd-name">{audio.label}</span> : <VolumeX size={14} strokeWidth={1.75} />}
+          </>
+        }
+      >
+        <ul className="dd-list" role="radiogroup" aria-label="Audio do dispositivo">
+          <li>
+            <button type="button" role="radio" aria-checked={!cfg.deviceAudioId} className={`dd-row ${!cfg.deviceAudioId ? 'is-on' : ''}`} onClick={() => update({ deviceAudioId: null })}>
+              <span className="dd-check is-radio">{!cfg.deviceAudioId && <Check size={11} strokeWidth={2.5} />}</span>
+              <VolumeX size={14} strokeWidth={1.75} className="dd-icon" />
+            </button>
+          </li>
+          {devs.audio.map((a) => (
+            <li key={a.id}>
+              <button type="button" role="radio" aria-checked={cfg.deviceAudioId === a.id} className={`dd-row ${cfg.deviceAudioId === a.id ? 'is-on' : ''}`} onClick={() => update({ deviceAudioId: a.id })}>
+                <span className="dd-check is-radio">{cfg.deviceAudioId === a.id && <Check size={11} strokeWidth={2.5} />}</span>
+                <AudioLines size={14} strokeWidth={1.75} className="dd-icon" />
+                <span className="dd-name">{a.label}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </Dropdown>
     </>
-  )
-}
-
-// ---------- Audio por aplicativo (desktop) ----------
-
-function AppAudioPicker({ cfg, update }) {
-  const [apps, setApps] = useState([])
-  const load = useCallback(() => window.visor.audioApps().then(setApps), [])
-  useEffect(() => {
-    load()
-    const t = setInterval(load, 4000)
-    return () => clearInterval(t)
-  }, [load])
-
-  const sel = Array.isArray(cfg.audio) ? cfg.audio : []
-  const system = sel.includes('system')
-
-  // janela escolhida -> sugere o audio do mesmo processo
-  const lastPid = useRef(0)
-  useEffect(() => {
-    if (!cfg.sourcePid || cfg.sourcePid === lastPid.current) return
-    lastPid.current = cfg.sourcePid
-    if (apps.some((a) => a.pid === cfg.sourcePid)) update({ audio: [cfg.sourcePid] })
-  }, [cfg.sourcePid, apps, update])
-
-  const toggle = (pid) =>
-    update((c) => {
-      const cur = (Array.isArray(c.audio) ? c.audio : []).filter((x) => x !== 'system')
-      return { audio: cur.includes(pid) ? cur.filter((x) => x !== pid) : [...cur, pid] }
-    })
-
-  return (
-    <div className="chips" role="listbox" aria-label="Audio">
-      <span className="chips-icon" data-tip="Audio"><AudioLines size={14} strokeWidth={1.75} /></span>
-      <button type="button" className={`chip ${!sel.length ? 'is-on' : ''}`} aria-label="Sem audio" data-tip="Mudo" onClick={() => update({ audio: [] })}>
-        <VolumeX size={14} strokeWidth={1.75} />
-      </button>
-      <button type="button" className={`chip ${system ? 'is-on' : ''}`} aria-label="Sistema" data-tip="Sistema" onClick={() => update({ audio: system ? [] : ['system'] })}>
-        <Speaker size={14} strokeWidth={1.75} />
-      </button>
-      {apps.map((a) => (
-        <button
-          key={a.pid}
-          type="button"
-          className={`chip ${sel.includes(a.pid) ? 'is-on' : ''} ${a.active ? 'is-active' : ''}`}
-          data-tip={a.title || a.exe}
-          onClick={() => toggle(a.pid)}
-        >
-          {a.icon ? <img src={a.icon} alt="" className="mono-icon" /> : <AudioLines size={14} />}
-          <span>{a.exe.replace(/\.exe$/i, '')}</span>
-          {a.active && <span className="chip-level" aria-hidden />}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-function WebAudioToggle({ cfg, update }) {
-  const on = cfg.audio === true
-  return (
-    <div className="chips">
-      <span className="chips-icon" data-tip="Audio"><AudioLines size={14} strokeWidth={1.75} /></span>
-      <Segmented
-        label="Audio"
-        size="sm"
-        value={on ? 'on' : 'off'}
-        onChange={(v) => update({ audio: v === 'on' })}
-        options={[
-          { value: 'off', label: 'Sem audio', icon: <VolumeX size={14} strokeWidth={1.75} /> },
-          { value: 'on', label: 'Com audio', icon: <Speaker size={14} strokeWidth={1.75} /> },
-        ]}
-      />
-    </div>
   )
 }
 
@@ -314,7 +342,6 @@ function BitrateRow({ cfg, update, peers, uplink, live, open, children }) {
     setBusy(false)
   }, [others, update])
 
-  // mede sozinho na primeira abertura
   const auto = useRef(false)
   useEffect(() => {
     if (open && !live && net === null && !auto.current) {
@@ -323,7 +350,6 @@ function BitrateRow({ cfg, update, peers, uplink, live, open, children }) {
     }
   }, [open, live, net, measure])
 
-  // limite: ao vivo usa a estimativa real do WebRTC por espectador; antes, o teste de upload
   const limit = live && uplink ? uplink : net ? (net * 0.8) / others : null
 
   return (
@@ -337,62 +363,77 @@ function BitrateRow({ cfg, update, peers, uplink, live, open, children }) {
   )
 }
 
-// Slider com detentes e mola (conceito "Jelly slider")
+const LAST = BITRATES.length - 1
+const posOf = (i) => (i / LAST) * 100
+
+function posForBps(bps) {
+  if (bps >= BITRATES[LAST]) return 100
+  if (bps <= BITRATES[0]) return 0
+  const i = BITRATES.findIndex((b) => b > bps)
+  return posOf(i - 1 + (bps - BITRATES[i - 1]) / (BITRATES[i] - BITRATES[i - 1]))
+}
+
+// Slider com detentes e mola (conceito "Jelly slider").
+// Durante o arraste o polegar segue o ponteiro sem atraso; ao soltar, assenta no degrau com mola.
 function JellySlider({ value, limit, onChange }) {
   const track = useRef(null)
-  const [drag, setDrag] = useState(false)
+  const [drag, setDrag] = useState(null) // posicao livre (0-100) enquanto arrasta
   const idx = Math.max(0, BITRATES.indexOf(snapBitrate(value)))
-  const pos = (i) => (i / (BITRATES.length - 1)) * 100
-  const limitPos = limit ? posFor(limit) : null
+  const shown = drag ?? posOf(idx)
+  const liveIdx = drag === null ? idx : Math.round((drag / 100) * LAST)
+  const liveValue = BITRATES[liveIdx]
+  const limitPos = limit ? posForBps(limit) : null
 
-  function posFor(bps) {
-    if (bps >= BITRATES[BITRATES.length - 1]) return 100
-    if (bps <= BITRATES[0]) return 0
-    const i = BITRATES.findIndex((b) => b > bps)
-    const a = BITRATES[i - 1]
-    const b = BITRATES[i]
-    return pos(i - 1 + (bps - a) / (b - a))
+  const posFromEvent = (e) => {
+    const r = track.current.getBoundingClientRect()
+    return Math.min(100, Math.max(0, ((e.clientX - r.left) / r.width) * 100))
   }
 
-  const fromEvent = (e) => {
-    const r = track.current.getBoundingClientRect()
-    const t = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width))
-    const i = Math.round(t * (BITRATES.length - 1))
-    if (BITRATES[i] !== value) onChange(BITRATES[i])
+  const commit = (p) => {
+    const b = BITRATES[Math.round((p / 100) * LAST)]
+    if (b !== value) onChange(b)
   }
 
   return (
     <div
-      className={`jelly ${drag ? 'is-drag' : ''}`}
+      className={`jelly ${drag !== null ? 'is-drag' : ''}`}
       role="slider"
       tabIndex={0}
       aria-label="Bitrate"
       aria-valuemin={BITRATES[0]}
-      aria-valuemax={BITRATES[BITRATES.length - 1]}
-      aria-valuenow={value}
-      aria-valuetext={fmtMbps(value)}
+      aria-valuemax={BITRATES[LAST]}
+      aria-valuenow={liveValue}
+      aria-valuetext={fmtMbps(liveValue)}
       onKeyDown={(e) => {
-        if (e.key === 'ArrowRight' || e.key === 'ArrowUp') onChange(BITRATES[Math.min(BITRATES.length - 1, idx + 1)])
+        if (e.key === 'ArrowRight' || e.key === 'ArrowUp') onChange(BITRATES[Math.min(LAST, idx + 1)])
         if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') onChange(BITRATES[Math.max(0, idx - 1)])
       }}
       onPointerDown={(e) => {
+        e.preventDefault()
         e.currentTarget.setPointerCapture(e.pointerId)
-        setDrag(true)
-        fromEvent(e)
+        setDrag(posFromEvent(e))
       }}
-      onPointerMove={(e) => drag && fromEvent(e)}
-      onPointerUp={() => setDrag(false)}
-      onPointerCancel={() => setDrag(false)}
+      onPointerMove={(e) => {
+        if (drag === null) return
+        setDrag(posFromEvent(e))
+      }}
+      onPointerUp={(e) => {
+        if (drag === null) return
+        commit(posFromEvent(e))
+        setDrag(null)
+      }}
+      onPointerCancel={() => setDrag(null)}
+      onLostPointerCapture={() => drag !== null && (commit(drag), setDrag(null))}
     >
       <div className="jelly-track" ref={track}>
-        <span className="jelly-fill" style={{ width: `${pos(idx)}%` }} />
+        <span className="jelly-fill" style={{ width: `${shown}%` }} />
         {BITRATES.map((b, i) => (
-          <span key={b} className={`jelly-tick ${i <= idx ? 'is-in' : ''} ${limit && b > limit ? 'is-over' : ''}`} style={{ left: `${pos(i)}%` }} />
+          <span key={b} className={`jelly-tick ${i <= liveIdx ? 'is-in' : ''} ${limit && b > limit ? 'is-over' : ''}`} style={{ left: `${posOf(i)}%` }} />
         ))}
-        {limitPos !== null && <span className="jelly-limit" style={{ left: `${limitPos}%` }} data-tip={fmtMbps(limit)} />}
-        <span className="jelly-thumb" style={{ left: `${pos(idx)}%` }}>
-          <span className="jelly-bubble mono" key={value}>
-            {fmtMbps(value)}
+        {limitPos !== null && <span className="jelly-limit" style={{ left: `${limitPos}%` }} />}
+        <span className="jelly-thumb" style={{ left: `${shown}%` }}>
+          <span className="jelly-bubble mono" key={liveValue}>
+            {fmtMbps(liveValue)}
           </span>
         </span>
       </div>

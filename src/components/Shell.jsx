@@ -97,7 +97,6 @@ export default function Shell({ profile }) {
   }
 
   const logout = async () => {
-    await supabase.from('profiles').delete().eq('id', profile.id)
     await supabase.auth.signOut()
   }
 

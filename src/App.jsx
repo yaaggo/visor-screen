@@ -26,6 +26,6 @@ export default function App() {
   }, [])
 
   if (state.loading) return <div className="boot"><span className="boot-dot" /></div>
-  if (!state.profile) return <Login session={state.session} onReady={(session, profile) => setState({ loading: false, session, profile })} />
+  if (!state.profile) return <Login onReady={(session, profile) => setState({ loading: false, session, profile })} />
   return <Shell profile={state.profile} />
 }

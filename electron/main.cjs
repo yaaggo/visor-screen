@@ -11,7 +11,9 @@ const MEDIA_PERMS = new Set(['media', 'display-capture', 'clipboard-sanitized-wr
 app.commandLine.appendSwitch('disable-renderer-backgrounding')
 app.commandLine.appendSwitch('disable-background-timer-throttling')
 
-if (!app.requestSingleInstanceLock()) app.quit()
+// Modo dev usa dados separados e convive com o app instalado aberto
+if (DEV_URL) app.setPath('userData', path.join(app.getPath('appData'), 'visor-screen-dev'))
+else if (!app.requestSingleInstanceLock()) app.quit()
 
 let win = null
 

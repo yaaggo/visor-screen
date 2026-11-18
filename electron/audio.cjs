@@ -21,7 +21,9 @@ function run(args) {
 
 async function listApps() {
   if (!supported) return []
-  const apps = JSON.parse(await run(['list']))
+  const self = process.execPath.toLowerCase()
+  // remove o proprio Visor/Electron (o audio do app roda num processo filho com o mesmo executavel)
+  const apps = JSON.parse(await run(['list'])).filter((a) => a.path.toLowerCase() !== self)
   return Promise.all(
     apps.map(async (a) => {
       let icon = null

@@ -1581,6 +1581,273 @@ button:disabled {
   80% { translate: calc(-50% + 2px) 0; }
 }
 
+/* ---------- Login: senha curta ---------- */
+.login-name {
+  grid-column: 1 / -1;
+}
+.pin {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  cursor: text;
+}
+.pin-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  border: 0;
+  caret-color: transparent;
+  font-size: 16px;
+}
+.pin-cell {
+  display: grid;
+  place-items: center;
+  height: 56px;
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  transition: border-color var(--t-fast), background var(--t-fast), scale var(--t-med) var(--spring);
+}
+.pin:focus-within .pin-cell.is-caret {
+  border-color: var(--line-strong);
+  background: var(--raised);
+  scale: 1.04;
+}
+.pin.has-error .pin-cell {
+  border-color: var(--line-strong);
+}
+.pin-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--white);
+  scale: 0;
+  transition: scale var(--t-med) var(--bounce);
+}
+.pin-cell.is-filled .pin-dot {
+  scale: 1;
+}
+.pin:focus-within .pin-cell.is-caret .pin-dot {
+  scale: 0.25;
+  opacity: 0.5;
+  animation: breathe 1s ease-in-out infinite;
+}
+
+/* ---------- Dropdown vertical no painel ---------- */
+.dd {
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--bg);
+  transition: border-color var(--t-fast);
+}
+.dd.is-open {
+  border-color: var(--line-strong);
+}
+.dd-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: var(--r-md);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 550;
+  transition: background var(--t-fast);
+}
+.dd-trigger:hover {
+  background: var(--hover);
+}
+.dd-lead {
+  color: var(--faint);
+}
+.dd-badge {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--white);
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 700;
+}
+.dd-chev {
+  margin-left: auto;
+  color: var(--muted);
+  transition: rotate var(--t-med) var(--spring);
+}
+.dd.is-open .dd-chev {
+  rotate: 180deg;
+}
+.dd-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--t-med) var(--spring);
+}
+.dd.is-open .dd-body {
+  grid-template-rows: 1fr;
+}
+.dd-inner {
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 8px;
+  opacity: 0;
+  translate: 0 -6px;
+  transition: opacity var(--t-fast) var(--out), translate var(--t-med) var(--spring), padding var(--t-med) var(--spring);
+}
+.dd.is-open .dd-inner {
+  padding: 2px 8px 8px;
+  opacity: 1;
+  translate: 0 0;
+}
+.dd-inner > .segmented {
+  align-self: flex-start;
+}
+.dd-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+  transition: opacity var(--t-fast);
+}
+.dd-list.is-disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+.dd-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 8px;
+  border-radius: 9px;
+  color: var(--muted);
+  font-size: 12.5px;
+  text-align: left;
+  transition: background var(--t-fast), color var(--t-fast);
+  animation: slide-in var(--t-med) var(--spring) both;
+}
+.dd-row:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.dd-row.is-on {
+  color: var(--text);
+}
+.dd-row.is-offline {
+  opacity: 0.55;
+}
+.dd-check {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  border: 1.5px solid var(--line-strong);
+  color: var(--ink);
+  transition: background var(--t-med) var(--out), border-color var(--t-fast), scale var(--t-med) var(--bounce);
+}
+.dd-check.is-radio {
+  border-radius: 50%;
+}
+.dd-row.is-on .dd-check {
+  background: var(--white);
+  border-color: var(--white);
+}
+.dd-row:active .dd-check {
+  scale: 0.85;
+}
+.dd-check svg {
+  animation: pop var(--t-med) var(--bounce) both;
+}
+.dd-icon {
+  flex: none;
+  color: var(--faint);
+}
+.dd-name {
+  flex: none;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 550;
+}
+.dd-sub {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--faint);
+  font-size: 11.5px;
+}
+.dd-row.is-on .dd-name {
+  text-decoration: line-through;
+  text-decoration-color: var(--faint);
+}
+.dd-list[role='radiogroup'] .dd-row.is-on .dd-name {
+  text-decoration: none;
+}
+.dd-empty {
+  display: grid;
+  place-items: center;
+  height: 40px;
+  color: var(--faint);
+}
+
+/* ---------- Tooltips dentro da ilha nao cortam ---------- */
+.island {
+  overflow: visible;
+}
+.share-panel [data-tip]::after {
+  top: calc(100% + 8px);
+  bottom: auto;
+  translate: -50% -4px;
+}
+.share-panel [data-tip]:hover::after {
+  translate: -50% 0;
+}
+.share-panel .bitrate-row [data-tip]::after {
+  top: auto;
+  bottom: calc(100% + 8px);
+  translate: -50% 4px;
+}
+.share-panel .bitrate-row [data-tip]:hover::after {
+  translate: -50% 0;
+}
+.share-panel {
+  padding-bottom: 6px;
+}
+/* cada linha do painel e um contexto de empilhamento (translate da animacao);
+   a linha sob o ponteiro sobe para o tooltip ficar por cima das vizinhas */
+.share-panel > * {
+  position: relative;
+}
+.share-panel > *:hover {
+  z-index: 5;
+}
+
+/* ---------- Jelly: arraste sem atraso ---------- */
+.jelly.is-drag .jelly-thumb,
+.jelly.is-drag .jelly-fill {
+  transition: scale var(--t-med) var(--bounce);
+}
+.jelly.is-drag {
+  cursor: grabbing;
+}
+.jelly-bubble {
+  pointer-events: none;
+}
+
 /* ---------- Keyframes ---------- */
 @keyframes rise {
   from {

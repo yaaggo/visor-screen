@@ -1,14 +1,15 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-18, fase 2 (app desktop, audio por aplicativo, placa de captura, bitrate).
+Ultima atualizacao: 2026-11-18, fase 3 (login com senha curta, audio por exclusao, dropdowns verticais, slider fluido).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
 
 Compartilhamento de tela ate 1080p/60 fps com chat de texto, em servidores publicos.
-Login simplificado so com nome de usuario. Sem microfone (decisao do produto); o audio transmitido
-e o de aplicativos escolhidos (ex.: so o jogo), o do sistema, ou o de uma placa de captura.
+Login com nome de usuario + senha de 1 a 4 caracteres (so para poder voltar com o mesmo nome).
+Sem microfone (decisao do produto). Audio: Mudo ou Tudo, com lista de apps EXCLUIDOS (o que nao deve sair),
+ou o audio de uma placa de captura.
 Duas formas de uso, mesmo codigo React:
 - **Web**: https://visor-screen.vercel.app (assistir, chat, transmitir com o seletor do navegador)
 - **Desktop Windows (Electron)**: instalador em `release/`. Adiciona seletor proprio de tela/janela
@@ -17,7 +18,7 @@ Duas formas de uso, mesmo codigo React:
 Paleta preto/branco/cinza, sem emoji, sem textos longos: so icones (lucide) e motion.
 Referencia de motion: https://designbookmark.com/motion
 
-- GitHub: https://github.com/yaaggo/visor-screen (PRIVADO), branch `main`. Releases com os instaladores (v1.0.0)
+- GitHub: https://github.com/yaaggo/visor-screen (PRIVADO), branch `main`. Releases com os instaladores (v1.0.0, v1.1.0)
 - Supabase: projeto `visor-screen`, ref `gyqnzjjvugrfpbnfjbrf`, org `yaaggo's`, `sa-east-1`, plano gratuito
 - Vercel: projeto `yagos-projects-81a2fc4d/visor-screen` (linkado em `.vercel/`), functions em `gru1`
 
@@ -73,11 +74,14 @@ Tabelas em `public`, todas com RLS:
 
 - RPC `create_server(server_name)` (security invoker) cria servidor + canais `geral` (texto) e `tela` (tela).
 - Realtime em `servers`, `channels`, `messages`.
-- Auth: anonimo ligado, 30 logins anonimos/h por IP, site_url = producao.
-- Advisor de seguranca avisa "Anonymous Access Policies": esperado, o login do produto E anonimo.
+- Auth: e-mail/senha, sem confirmacao, anonimo desligado, rate limit sign_in_sign_ups = 30, site_url = producao.
 
-Login: `signInAnonymously()` -> insere `profiles` (23505 = nome em uso). Sair apaga o perfil (libera o nome) + `signOut()`.
-Se a sessao salva aponta para usuario removido, o app faz `signOut({scope:'local'})` e cria outra.
+Login (`src/components/Login.jsx`): conta Supabase de e-mail/senha com e-mail sintetico `<nome minusculo>@visor-screen.vercel.app`
+e senha `visor-pin:<senha>` (o Supabase exige 6+; o segredo real sao os 1-4 caracteres). Confirmacao de e-mail desligada,
+login anonimo desligado. Fluxo: `signInWithPassword`; se falhar, `signUp`; se o signUp disser que ja existe -> "Senha incorreta".
+Perfil e criado no primeiro login. Sair = so `signOut()` (o nome continua reservado).
+Seguranca: senha de 4 caracteres e fraca de proposito (pedido do usuario); o rate limit do Auth (30 tentativas / 5 min por IP) freia forca bruta.
+Em 2026-11-18 todos os usuarios foram apagados na migracao para senha; o servidor `estudio` ficou sem dono (owner_id null).
 
 ## Transmissao
 
@@ -88,16 +92,26 @@ Se a sessao salva aponta para usuario removido, o app faz `signOut({scope:'local
   `getUserMedia({ chromeMediaSource: 'desktop', chromeMediaSourceId, maxWidth/Height/FrameRate })`.
   Verificado: 1920x1080 a 60 fps.
 - **Dispositivo** (placa de captura/webcam, web e desktop): `getUserMedia({ video: { deviceId } })` + entrada de audio
-  opcional do proprio dispositivo (sem AEC/AGC/NS, estereo 48 kHz). `matchAudio()` sugere a entrada com nome parecido.
+  opcional do proprio dispositivo (dropdown vertical de escolha unica) (sem AEC/AGC/NS, estereo 48 kHz). `matchAudio()` sugere a entrada com nome parecido.
 
-### Audio por aplicativo (somente desktop Windows)
+### Audio (Mudo / Tudo / exclusoes)
+- UI: dropdown vertical no painel (`AudioPicker` em SharePanel.jsx): segmentado Mudo/Tudo + lista de apps com checkbox;
+  marcado = NAO sai na transmissao. Exclusoes salvas por nome do executavel (`visor.exclude`), entao valem entre sessoes;
+  excluidos que nao estao abertos aparecem esmaecidos para poder desmarcar. Web: so Mudo/Tudo (audio do navegador).
+- Calculo dos alvos (`audioTargets` em ScreenChannel.jsx):
+  Mudo -> nada; Tudo sem exclusoes -> 1 fluxo `exclude` do proprio Visor (sistema inteiro, sem eco);
+  Tudo com exclusoes -> 1 fluxo `include` por app NAO excluido (a API do Windows so exclui 1 processo por fluxo).
+  A lista de apps atualiza a cada 3 s enquanto o painel esta aberto ou ao vivo; apps que comecam a tocar entram sozinhos.
+- `audio.cjs` remove da lista os processos com o mesmo executavel do Visor (o audio do Electron roda num filho).
+- Verificado (Electron, CDP): app excluido nao capturado, os demais com ~190 blocos/2 s cada.
+
+### Audio por aplicativo (helper nativo, somente desktop Windows)
 - `visor-audio.exe list` lista processos com sessao de audio (JSON: pid, exe, path, title, active).
 - `visor-audio.exe capture <pid>` captura so aquele processo e filhos; `capture <pid> exclude` captura tudo MENOS ele.
   "Sistema" no app = `exclude` do proprio Visor (sem eco do que os espectadores falam/tocam).
 - Saida: float32 LE, 48 kHz, estereo, no stdout. Requer Windows 10 build 20348+ / Windows 11.
 - `audio.cjs` alinha em frames de 8 bytes e envia via IPC; `AppAudioMixer` toca em AudioWorklet com buffer max ~120 ms
   (descarta excesso para nao acumular atraso) e mixa tudo em uma track. Trocar apps ao vivo nao renegocia o WebRTC.
-- Escolher uma janela pre-seleciona o audio do mesmo pid (`winpid <hwnd>`).
 - Verificado: 244 blocos de audio em 2,5 s no modo sistema; lista de apps com icone.
 - Para recompilar: `npm run native` (precisa VS 2022 Community + Windows SDK 10.0.20348+).
 
@@ -122,6 +136,7 @@ Medido em 2026-11-18 nesta maquina (Electron/Chromium 156, loopback local, conte
 - Upload medido do usuario: ~120-128 Mbps (teste paralelo; curl de 1 fluxo subestimou ~18 Mbps).
 - Malha 1->N: upload necessario = bitrate x espectadores. O slider sugere `80% do upload / espectadores`.
 - Degraus: 2, 3, 4, 6, 8, 10, 12, 16, 20, 25, 30, 40, 50 Mbps. Padrao por preset: 1080p60=12, 1080p30=8, 720p60=6, 720p30=4, 480p30=2.
+- Slider (`JellySlider`): durante o arraste o polegar segue o ponteiro sem transicao; ao soltar assenta no degrau com mola.
 - No slider: marca cinza = limite da rede (teste de upload antes; `availableOutgoingBitrate` real ao vivo).
   O teste roda sozinho na 1a abertura do painel (cache de 1 h) e ajusta o bitrate para o maximo seguro.
 - TURN (se ativado) passa o video pela Cloudflare: 50 Mbps ~ 22 GB/h por espectador retransmitido (free tier 1 TB/mes).
@@ -139,7 +154,8 @@ npx vercel deploy --prod --yes
 ```
 npm install
 npm run dev                 # web em http://localhost:5173 (le .env.local)
-npm run desktop:dev         # Electron apontando para o vite dev (rode `npm run dev` antes)
+npm run desktop:dev         # Electron apontando para o vite dev (rode `npm run dev` antes). Usa userData separado
+                            # (visor-screen-dev) e nao tem trava de instancia unica: convive com o app instalado aberto
 npm run desktop             # build + Electron com dist/
 npm run native              # recompila electron/native/bin/visor-audio.exe
 npm run dist:win            # gera release/Visor-Setup-1.0.0.exe e release/Visor-1.0.0-portable.exe
@@ -162,7 +178,9 @@ Feito:
 - Fase 2: app desktop Electron; audio por aplicativo e "sistema sem eco" via helper nativo; dispositivos de video
   (placa de captura) com audio do dispositivo; slider de bitrate em degraus ate 50 Mbps com teste de rede e
   marca de limite; volume do espectador; H264 preferido; correcao de sessao anonima invalida; functions em gru1
-- Instaladores gerados em `release/` e publicados em GitHub Releases v1.0.0 (nao assinados: SmartScreen avisa na 1a execucao)
+- Fase 3: login com senha curta, audio Mudo/Tudo + exclusoes, dropdowns verticais, slider fluido, tooltips do painel
+  abrindo para baixo (e acima na linha do bitrate) e sobre as linhas vizinhas
+- Instaladores em `release/` e GitHub Releases (v1.0.0, v1.1.0) (nao assinados: SmartScreen avisa na 1a execucao)
 - Repositorio git criado e enviado (privado) e conectado a Vercel: push em `main` = deploy de producao; outras branches = preview
 - Servidor `estudio` pertence ao usuario `yago`; dados de teste removidos
 
@@ -187,6 +205,8 @@ Proximos passos sugeridos:
 - Preto, branco, cinza. Sem cor de destaque ("ao vivo" = ponto branco pulsando; icones de apps em escala de cinza).
 - Sem emoji. Sem textos/insights longos. Rotulos curtos so em tooltips (`data-tip`) e `aria-label`.
 - Motion inspirado em designbookmark.com/motion: Tab pill/Segmented, Morph island, Magnetic button, Morph popover,
-  Copy button, Hold to publish, Loading to success, Springy input, Scramble text, Sidebar collapse, Jelly slider.
+  Copy button, Hold to publish, Loading to success, Springy input, Scramble text, Sidebar collapse, Jelly slider,
+  OTP code (senha), Spring dropdown (listas verticais).
+- Selecoes com varias opcoes abrem como lista VERTICAL (dropdown), nao como fileira horizontal de chips (pedido do usuario).
 - Respeitar `prefers-reduced-motion`.
 - Interface em portugues (pt-BR).

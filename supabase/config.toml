@@ -5,9 +5,16 @@ project_id = "gta-screen"
 [auth]
 site_url = "https://visor-screen.vercel.app"
 additional_redirect_urls = ["http://localhost:5173"]
-# Login simplificado: sessao anonima + username em public.profiles
-enable_anonymous_sign_ins = true
+# Login: usuario + senha curta (1-4 caracteres). Conta = e-mail sintetico <nome>@visor-screen.vercel.app
+# com senha "visor-pin:<senha>" (o Supabase exige 6+). Nenhum e-mail e enviado.
+enable_anonymous_sign_ins = false
+enable_signup = true
+minimum_password_length = 6
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
 
 [auth.rate_limit]
-# Logins anonimos por hora por IP
-anonymous_users = 30
+# tentativas de login/cadastro por 5 min por IP (freia forca bruta na senha curta)
+sign_in_sign_ups = 30

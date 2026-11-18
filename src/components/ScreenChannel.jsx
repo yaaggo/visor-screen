@@ -6,15 +6,38 @@ import { fmtMbps, getPreset } from '../lib/quality.js'
 import { desktop } from '../lib/env.js'
 import { captureDesktop, captureDevice, captureWeb } from '../lib/sources.js'
 import { Avatar, IconButton } from './ui.jsx'
-import SharePanel, { pref, useShareConfig } from './SharePanel.jsx'
+import SharePanel, { exeKey, pref, useShareConfig } from './SharePanel.jsx'
 import TextChannel from './TextChannel.jsx'
 
 let selfPid = 0
 if (desktop) window.visor.selfPid().then((p) => (selfPid = p))
 
-// Converte a selecao de audio em alvos do helper nativo
-const audioTargets = (audio) =>
-  (Array.isArray(audio) ? audio : []).map((a) => (a === 'system' ? { pid: selfPid, exclude: true } : { pid: a, exclude: false }))
+// Converte a configuracao de audio em alvos do helper nativo:
+// - Mudo: nada
+// - Tudo sem exclusoes: um fluxo do sistema inteiro menos o proprio Visor (sem eco)
+// - Tudo com exclusoes: um fluxo por app que NAO esta excluido (a API do Windows so exclui 1 processo por fluxo)
+function audioTargets(cfg, apps) {
+  if (cfg.audioMode === 'off') return []
+  if (!cfg.exclude.length) return [{ pid: selfPid, exclude: true }]
+  return apps.filter((a) => !cfg.exclude.includes(exeKey(a.exe))).map((a) => ({ pid: a.pid, exclude: false }))
+}
+
+// Apps com audio (desktop), atualizado a cada 3 s enquanto precisa
+function useAudioApps(enabled) {
+  const [apps, setApps] = useState([])
+  useEffect(() => {
+    if (!desktop || !enabled) return
+    let alive = true
+    const load = () => window.visor.audioApps().then((a) => alive && setApps(a))
+    load()
+    const t = setInterval(load, 3000)
+    return () => {
+      alive = false
+      clearInterval(t)
+    }
+  }, [enabled])
+  return apps
+}
 
 export default function ScreenChannel({ channel, profile, chatChannel }) {
   const roomRef = useRef(null)
@@ -23,6 +46,9 @@ export default function ScreenChannel({ channel, profile, chatChannel }) {
   const [chat, setChat] = useState(() => pref.get('visor.chatOpen', true))
   const [cfg, update] = useShareConfig()
   const [error, setError] = useState(false)
+  const [panelOpen, setPanelOpen] = useState(false)
+  const apps = useAudioApps(panelOpen || s.sharing)
+  const targetKey = JSON.stringify(audioTargets(cfg, apps))
 
   useEffect(() => {
     const room = new ScreenRoom({ supabase, roomId: channel.id, me: { id: profile.id, name: profile.username }, onChange: setS })
@@ -40,8 +66,8 @@ export default function ScreenChannel({ channel, profile, chatChannel }) {
     if (s.sharing) roomRef.current.setBitrate(cfg.bitrate)
   }, [cfg.bitrate, s.sharing])
   useEffect(() => {
-    if (s.sharing) captureRef.current?.mixer?.set(audioTargets(cfg.audio))
-  }, [cfg.audio, s.sharing])
+    if (s.sharing) captureRef.current?.mixer?.set(JSON.parse(targetKey))
+  }, [targetKey, s.sharing])
 
   const start = async () => {
     const preset = getPreset(cfg.presetId)
@@ -52,9 +78,9 @@ export default function ScreenChannel({ channel, profile, chatChannel }) {
         cap = await captureDevice(cfg.deviceId, preset, cfg.deviceAudioId)
       } else if (desktop) {
         if (!cfg.sourceId) throw new Error('source')
-        cap = await captureDesktop(cfg.sourceId, preset, audioTargets(cfg.audio))
+        cap = await captureDesktop(cfg.sourceId, preset, audioTargets(cfg, apps))
       } else {
-        cap = await captureWeb(cfg.kind, preset, cfg.audio === true)
+        cap = await captureWeb(cfg.kind, preset, cfg.audioMode === 'all')
       }
       captureRef.current = cap
       await roomRef.current.startShare(cap, cfg.presetId, cfg.bitrate)
@@ -108,6 +134,8 @@ export default function ScreenChannel({ channel, profile, chatChannel }) {
         <Island
           s={s}
           cfg={cfg}
+          apps={apps}
+          onOpenChange={setPanelOpen}
           update={update}
           error={error}
           onStart={start}
@@ -237,8 +265,9 @@ function Stage({ stream, local, stats, watchingName, hasAudio }) {
 }
 
 // Ilha que se expande do botao de transmitir (conceito "Morph island")
-function Island({ s, cfg, update, error, onStart, onStop }) {
+function Island({ s, cfg, apps, onOpenChange, update, error, onStart, onStop }) {
   const [open, setOpen] = useState(false)
+  useEffect(() => onOpenChange(open), [open, onOpenChange])
   const ref = useRef(null)
   const preset = getPreset(s.sharing ? s.preset : cfg.presetId)
 
@@ -298,6 +327,7 @@ function Island({ s, cfg, update, error, onStart, onStop }) {
             open={open}
             peers={s.peers}
             uplink={s.uplink}
+            apps={apps}
             onStart={async () => {
               if (await onStart()) setOpen(false)
             }}
