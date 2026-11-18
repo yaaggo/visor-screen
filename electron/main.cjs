@@ -3,6 +3,7 @@
 const { app, BrowserWindow, desktopCapturer, ipcMain, session, shell } = require('electron')
 const path = require('node:path')
 const audio = require('./audio.cjs')
+const registerCapture = require('./capture.cjs')
 
 const DEV_URL = process.env.VISOR_DEV_URL // ex.: http://localhost:5173
 const MEDIA_PERMS = new Set(['media', 'display-capture', 'clipboard-sanitized-write', 'fullscreen'])
@@ -11,13 +12,17 @@ const MEDIA_PERMS = new Set(['media', 'display-capture', 'clipboard-sanitized-wr
 app.commandLine.appendSwitch('disable-renderer-backgrounding')
 app.commandLine.appendSwitch('disable-background-timer-throttling')
 
-// Modo dev usa dados separados e convive com o app instalado aberto
+// Builds de teste usam perfis separados do Visor instalado.
 if (DEV_URL) app.setPath('userData', path.join(app.getPath('appData'), 'visor-screen-dev'))
-else if (!app.requestSingleInstanceLock()) app.quit()
+else {
+  if (app.getVersion().includes('-beta.')) app.setPath('userData', path.join(app.getPath('appData'), 'visor-screen-beta'))
+  if (!app.requestSingleInstanceLock()) app.quit()
+}
 
 let win = null
 let priorityQueue = Promise.resolve()
 let priorityRequested = false
+let stopCapture = () => {}
 
 function setStreamingPriority(enabled) {
   if (enabled === priorityRequested) return priorityQueue
@@ -65,12 +70,19 @@ function createWindow() {
   if (DEV_URL) win.loadURL(DEV_URL)
   else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
 
-  win.webContents.on('render-process-gone', () => setStreamingPriority(false))
+  win.webContents.on('render-process-gone', () => {
+    stopCapture()
+    setStreamingPriority(false)
+  })
   win.webContents.on('did-start-navigation', (details) => {
-    if (details.isMainFrame && !details.isSameDocument) setStreamingPriority(false)
+    if (details.isMainFrame && !details.isSameDocument) {
+      stopCapture()
+      setStreamingPriority(false)
+    }
   })
   win.on('closed', () => {
     audio.stopAll()
+    stopCapture()
     setStreamingPriority(false)
     win = null
   })
@@ -84,6 +96,7 @@ app.on('second-instance', () => {
 })
 
 app.whenReady().then(() => {
+  stopCapture = registerCapture(() => win)
   session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => cb(MEDIA_PERMS.has(perm)))
   session.defaultSession.setPermissionCheckHandler((_wc, perm) => MEDIA_PERMS.has(perm))
 

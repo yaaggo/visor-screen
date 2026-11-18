@@ -85,7 +85,7 @@ export default function TextChannel({ channel, profile, compact = false }) {
           const mine = m.author_id === profile.id
           return (
             <article key={m.id} className={`msg ${grouped ? 'is-grouped' : ''} ${m.temp ? 'is-temp' : ''} ${m.failed ? 'is-failed' : ''}`}>
-              <div className="msg-side">{!grouped && <Avatar name={m.author_name} size={compact ? 24 : 30} />}</div>
+              <div className="msg-side">{!grouped && <Avatar id={m.author_id} name={m.author_name} size={compact ? 24 : 30} />}</div>
               <div className="msg-main">
                 {!grouped && (
                   <header>

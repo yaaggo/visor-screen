@@ -1910,6 +1910,10 @@ button:disabled {
   background: var(--white);
   color: var(--ink);
 }
+.share-error {
+  color: var(--text);
+  font-size: 11px;
+}
 
 /* ---------- Keyframes ---------- */
 @keyframes rise {
@@ -2013,3 +2017,46 @@ button:disabled {
     transition-duration: 1ms !important;
   }
 }
+.avatar { position: relative; overflow: hidden; border-radius: 50% }
+.avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover }
+.channel-people:empty { display:none }
+.channel-people { padding: 3px 0 7px 22px; display: grid; gap: 3px }
+.participant { display: inline-flex; gap: 8px; align-items: center; color: var(--muted); min-width: 0; border-radius: var(--r-md); padding: 4px 6px; text-align: left }
+.participant:hover,.participant[aria-pressed=true] { background: var(--hover); color: var(--text) }
+.participant-face { position: relative; display: inline-flex; flex-shrink: 0 }
+.participant-face .live-dot { position: absolute; right: 0; bottom: 0; outline: 2px solid var(--bg); background: white }
+.call-lobby { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; align-content: center; gap: 12px; height: 100% }
+.call-lobby .participant { flex-direction: column; padding: 12px }
+.stream-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); grid-auto-rows: minmax(0,1fr); height: 100%; gap: 6px }
+.stream-grid[data-count="1"] { grid-template-columns: 1fr }
+.stage-wrap { container-type: size }
+@container (max-aspect-ratio: 2/1) { .stream-grid {grid-template-columns: 1fr} }
+.stage { min-height: 0; min-width: 0 }
+.stage video { min-height: 0; min-width: 0 }
+.stream-hover,.stream-menu { position: fixed; z-index: 100; background: #242424; border: 1px solid var(--line); border-radius: var(--r-md); animation: slide-in var(--t-med) var(--spring) both }
+.stream-menu { padding: 12px 16px }
+.stream-hover { pointer-events: auto; width: 204px; height: 116px; overflow: hidden }
+.stream-hover video { width: 100%; height: 100%; object-fit: contain }
+.stream-hover small { position: absolute; bottom: 4px; left: 7px; padding: 1px 5px; border-radius: 6px; background: #151515 }
+.photo-dialog { margin: auto; padding: 18px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: var(--r-xl); width: min(330px,94vw); animation: slide-in var(--t-med) var(--spring) }
+.photo-dialog::backdrop { background: #0009 }
+.photo-dialog header,.photo-dialog footer,.photo-dialog label { display:flex; align-items:center; justify-content:space-between; gap:12px; margin: 6px 0 14px }
+.photo-dialog canvas { display:block; width: min(100%,256px); aspect-ratio:1; margin:18px auto; border-radius:50%; background:#222; cursor:grab; touch-action:none }
+.photo-dialog input[type=range] { accent-color: white; flex: 1 }
+.photo-drop { width:100%; height:204px; border-radius:var(--r-xl); display:grid; place-content:center; justify-items:center; gap:7px; background:#222; transition:transform .75s var(--zone-ease), background .2s }
+.photo-drop.near { transform:scale(1.025); background:#303030 }
+.photo-drop i { display:grid; place-items:center; width:64px; height:64px; border-radius:50%; background:#383838; margin-bottom:12px; transition:transform .75s var(--core-ease) }
+.photo-drop.near i { transform:translateY(-5px) scale(1.12) }
+.photo-drop small { color:var(--muted) }
+.photo-dialog footer button,.photo-done { background:var(--hover); border-radius:var(--r-md); padding:9px 14px }
+.photo-dialog footer button:last-child { background:#eee; color:#171717 }
+.photo-dialog p,.photo-done { display:flex; align-items:center; gap:8px; margin:12px 0 0 }
+.photo-ring { width:48px; height:48px; display:grid; place-items:center; position:relative; font-variant-numeric:tabular-nums; font-size:11px }
+.photo-ring svg { position:absolute; inset:0; transform:rotate(-90deg); stroke:currentColor; fill:none; stroke-width:2 }
+.photo-status,.photo-done { display:flex; align-items:center; gap:10px; animation:slide-in .75s var(--line-ease) }
+.photo-done svg { border-radius:50%; background:white; color:black; padding:3px; width:28px; height:28px; animation:slide-in .75s var(--core-ease) }
+@media(prefers-reduced-motion:reduce) { .photo-dialog *, .photo-dialog, .stream-hover,.stream-menu { animation:none!important; transition:none!important } }
+.call-strip { display:none }
+.is-collapsed .call-strip { display:flex; position:absolute; top:18px; right:56px; max-width:70%; overflow-x:auto; border-radius:var(--r-md); background:#171717e8 }
+.call-strip .participant > span:nth-child(2) { display:none }
+@media (max-width:860px) { .call-strip { display:flex; position:absolute; top:18px; right:56px; max-width:70%; overflow-x:auto; border-radius:var(--r-md); background:#171717e8 } }

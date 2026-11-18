@@ -11,10 +11,10 @@ function rate(stat, previous, key, factor) {
   return elapsed > 0 && change != null ? Math.round((change * factor) / elapsed) : null
 }
 
-function timePerFrame(stat, previous, timeKey, framesKey) {
-  const frames = delta(stat, previous, framesKey)
+function averageMs(stat, previous, timeKey, countKey) {
+  const count = delta(stat, previous, countKey)
   const time = delta(stat, previous, timeKey)
-  return frames > 0 && time != null ? Math.round((time * 10_000) / frames) / 10 : null
+  return count > 0 && time != null ? Math.round((time * 10_000) / count) / 10 : null
 }
 
 function videoRtp(report, type) {
@@ -55,7 +55,8 @@ export function readOutboundVideo(report, previous) {
     fps: rate(stat, prior, 'framesSent', 1000),
     kbps: rate(stat, prior, 'bytesSent', 8),
     height: stat.frameHeight,
-    encodeMs: timePerFrame(stat, prior, 'totalEncodeTime', 'framesEncoded'),
+    encodeMs: averageMs(stat, prior, 'totalEncodeTime', 'framesEncoded'),
+    sendQueueMs: averageMs(stat, prior, 'totalPacketSendDelay', 'packetsSent'),
     encoder: stat.encoderImplementation,
     powerEfficient: stat.powerEfficientEncoder,
     limit: stat.qualityLimitationReason,
@@ -86,8 +87,8 @@ export function readInboundVideo(report, previous) {
     kbps: rate(stat, prior, 'bytesReceived', 8),
     dropped: delta(stat, prior, 'framesDropped'),
     freezes: stat.freezeCount,
-    decodeMs: timePerFrame(stat, prior, 'totalDecodeTime', 'framesDecoded'),
-    bufferMs: timePerFrame(stat, prior, 'jitterBufferDelay', 'jitterBufferEmittedCount'),
+    decodeMs: averageMs(stat, prior, 'totalDecodeTime', 'framesDecoded'),
+    bufferMs: averageMs(stat, prior, 'jitterBufferDelay', 'jitterBufferEmittedCount'),
     decoder: stat.decoderImplementation,
     powerEfficient: stat.powerEfficientDecoder,
     jitter: millis(stat.jitter),

@@ -1,6 +1,6 @@
 // Presets de resolucao/fps. Teto: 1080p 60 fps.
 export const PRESETS = [
-  { id: '1080p60', res: '1080', fps: 60, width: 1920, height: 1080, bitrate: 12_000_000 },
+  { id: '1080p60', res: '1080', fps: 60, width: 1920, height: 1080, bitrate: 25_000_000 },
   { id: '1080p30', res: '1080', fps: 30, width: 1920, height: 1080, bitrate: 8_000_000 },
   { id: '720p60', res: '720', fps: 60, width: 1280, height: 720, bitrate: 6_000_000 },
   { id: '720p30', res: '720', fps: 30, width: 1280, height: 720, bitrate: 4_000_000 },
@@ -26,7 +26,7 @@ export function videoConstraints(preset) {
 }
 
 // Aplica bitrate/fps maximos e preferencia de degradacao em um sender de video
-export async function tuneSender(sender, preset, bitrate) {
+export async function tuneSender(sender, preset, bitrate, keepResolution = false) {
   const params = sender.getParameters()
   if (!params.encodings?.length) params.encodings = [{}]
   const enc = params.encodings[0]
@@ -40,7 +40,7 @@ export async function tuneSender(sender, preset, bitrate) {
     enc.scaleResolutionDownBy = 1
     enc.priority = 'high'
     enc.networkPriority = 'high'
-    params.degradationPreference = preset.fps >= 60 ? 'maintain-framerate' : 'maintain-resolution'
+    params.degradationPreference = preset.fps >= 60 && !keepResolution ? 'maintain-framerate' : 'maintain-resolution'
   }
   try {
     await sender.setParameters(params)
@@ -54,7 +54,7 @@ export async function tuneSender(sender, preset, bitrate) {
 // - video: libera BWE ate MAX_BITRATE e comeca alto (x-google-*)
 // - audio: Opus estereo, 256 kbps, sem DTX
 export function mungeAnswer(sdp, bitrate) {
-  const start = Math.round(Math.min(bitrate, 20_000_000) / 2000) // kbps, metade do alvo
+  const start = Math.round(Math.min(bitrate, MAX_BITRATE) / 1000)
   const lines = sdp.split('\r\n')
   const opus = new Set()
   const video = new Set()
@@ -66,7 +66,11 @@ export function mungeAnswer(sdp, bitrate) {
     if (section === 'audio' && m[2].toLowerCase() === 'opus') opus.add(m[1])
     if (section === 'video' && !/rtx|red|ulpfec|flexfec/i.test(m[2])) video.add(m[1])
   }
+  const hasConfig = new Set(lines.flatMap(l => l.match(/^a=fmtp:(\d+) /)?.slice(1) ?? []))
+  const hints = `x-google-start-bitrate=${start};x-google-max-bitrate=${MAX_BITRATE / 1000};x-google-min-bitrate=500`
   const out = lines.map((l) => {
+    const codec = l.match(/^a=rtpmap:(\d+) /)?.[1]
+    if (video.has(codec) && !hasConfig.has(codec)) return l + '\r\na=fmtp:' + codec + ' ' + hints
     const m = l.match(/^a=fmtp:(\d+) (.*)$/)
     if (!m) return l
     const [, pt, cfg] = m
@@ -74,8 +78,9 @@ export function mungeAnswer(sdp, bitrate) {
       const keep = cfg.split(';').filter((p) => !/^(stereo|sprop-stereo|maxaveragebitrate|usedtx|cbr)=/.test(p))
       return `a=fmtp:${pt} ${[...keep, 'stereo=1', 'sprop-stereo=1', `maxaveragebitrate=${AUDIO_BITRATE}`, 'usedtx=0'].join(';')}`
     }
-    if (video.has(pt) && !/x-google-max-bitrate/.test(cfg)) {
-      return `a=fmtp:${pt} ${cfg};x-google-start-bitrate=${start};x-google-max-bitrate=${MAX_BITRATE / 1000};x-google-min-bitrate=500`
+    if (video.has(pt)) {
+      const keep = cfg.split(';').filter(p => !/^\s*x-google-(start|min|max)-bitrate=/i.test(p))
+      return `a=fmtp:${pt} ${[...keep, hints].join(';')}`
     }
     return l
   })

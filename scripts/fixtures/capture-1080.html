@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<title>Teste de captura 1080p</title>
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #111; }
+  canvas { width: 100%; height: 100%; display: block; }
+</style>
+<canvas width="1920" height="1080"></canvas>
+<script>
+  const ctx = document.querySelector('canvas').getContext('2d', { alpha: false })
+  // Moving texture adds detail for bitrate measurements without generating fresh noise every frame.
+  const tile = document.createElement('canvas')
+  tile.width = tile.height = 512
+  const tileContext = tile.getContext('2d')
+  const pixels = tileContext.createImageData(512, 512)
+  let seed = 817
+  for (let i = 0; i < pixels.data.length; i += 4) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
+    pixels.data.fill(seed >>> 24, i, i + 3)
+    pixels.data[i + 3] = 255
+  }
+  tileContext.putImageData(pixels, 0, 0)
+  const grain = ctx.createPattern(tile, 'repeat')
+  const detail = new URLSearchParams(location.search).get('detail') === '1'
+  const targetFps = Number(new URLSearchParams(location.search).get('fps'))
+  let frames = 0, sampled = performance.now()
+  const transitions = new URLSearchParams(location.search).get('transitions') === '1'
+  const sky = ctx.createLinearGradient(0, 0, 0, 1080)
+  sky.addColorStop(0, '#142038')
+  sky.addColorStop(1, '#a4b9c0')
+
+  function drawWindows(t) {
+    const phase = t % 6
+    if (phase >= 3) return
+    const slide = Math.max(0, 1 - phase / 0.18, (phase - 2.8) / 0.2)
+    ctx.save()
+    ctx.translate(slide * 1250, slide * 350)
+    ctx.fillStyle = '#13171d'
+    ctx.fillRect(128, 82, 1664, 916)
+    ctx.fillStyle = '#eee'
+    ctx.fillRect(128, 82, 1664, 45)
+    ctx.fillStyle = '#20242a'
+    ctx.font = '18px system-ui'
+    ctx.fillText('Teste de transição de janela', 155, 110)
+    for (let row = 0; row < 21; row++) {
+      for (let col = 0; col < 16; col++) {
+        const value = (row * 57 + col * 31 + row * col * 17 + Math.floor(t / 6) * 83) % 255
+        ctx.fillStyle = `rgb(${value} ${255 - value} ${(value * 3) % 255})`
+        ctx.fillRect(155 + col * 101, 144 + row * 39, 91, 32)
+      }
+    }
+    ctx.restore()
+  }
+
+  function draw(now) {
+    const t = now / 1000
+    ctx.fillStyle = sky
+    ctx.fillRect(0, 0, 1920, 1080)
+
+    // Repeatable parallax scene with a smooth background and moving edges.
+    for (let layer = 0; layer < 4; layer++) {
+      const offset = (t * (48 + layer * 95)) % 260
+      ctx.fillStyle = ['#5d7887', '#4a616c', '#334c49', '#1b352f'][layer]
+      ctx.beginPath()
+      ctx.moveTo(0, 1080)
+      for (let i = -1; i <= 9; i++) {
+        const x = i * 260 - offset
+        const base = 430 + layer * 140
+        ctx.lineTo(x, base + Math.cos(i * 2.2 + layer) * 100)
+        ctx.lineTo(x + 120, base + Math.sin(i + layer * 3) * 120 - 80)
+      }
+      ctx.lineTo(1920, 1080)
+      ctx.fill()
+    }
+
+    for (let j = 0; j < 6; j++) {
+      const x = ((t * (380 + j * 28) + j * 510) % 2260) - 170
+      const y = 530 + j * 64 + Math.sin(t * 3 + j) * 78
+      ctx.save()
+      ctx.translate(x, y)
+      ctx.rotate(t * 0.8 + j * 0.3)
+      ctx.fillStyle = j % 2 ? '#e5ac59' : '#dde8e6'
+      ctx.fillRect(-36, -20, 72, 40)
+      ctx.restore()
+    }
+
+    if (detail) {
+      ctx.save()
+      ctx.globalAlpha = 0.33
+      ctx.translate((t * 423) % 512, (t * 217) % 512)
+      ctx.fillStyle = grain
+      ctx.fillRect(-512, -512, 2432, 1592)
+      ctx.restore()
+    }
+    if (transitions) drawWindows(t)
+    ctx.fillStyle = '#f9fbfc'
+    ctx.font = '25px system-ui'
+    ctx.fillText('Teste de captura 1080p', 52, 60)
+    frames++
+    if (performance.now() - sampled >= 1000) {
+      window.fixtureFps = Math.round(1000 * frames / (performance.now() - sampled))
+      sampled = performance.now()
+      frames = 0
+    }
+    if (!targetFps) requestAnimationFrame(draw)
+  }
+
+  if (targetFps) setInterval(() => draw(performance.now()), 1000 / targetFps)
+  else requestAnimationFrame(draw)
+</script>

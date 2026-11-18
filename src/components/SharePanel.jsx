@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AppWindow, AudioLines, Check, ChevronDown, Gauge, LoaderCircle, Monitor, RefreshCw, Speaker, Video, VolumeX } from 'lucide-react'
+import { ArrowUpToLine, AppWindow, AudioLines, Check, ChevronDown, Cpu, Gauge, LoaderCircle, Monitor, RefreshCw, Speaker, Video, VolumeX } from 'lucide-react'
 import { BITRATES, PRESETS, fmtMbps, getPreset, snapBitrate } from '../lib/quality.js'
 import { desktop } from '../lib/env.js'
 import { listDevices, matchAudio } from '../lib/sources.js'
@@ -31,6 +31,7 @@ export function useShareConfig() {
   const [cfg, setCfg] = useState(() => ({
     kind: pref.get('visor.kind', 'monitor'), // monitor | window | device
     sourceId: null,
+    engine: pref.get('visor.captureEngineStable', 'rust'),
     deviceId: pref.get('visor.device', null),
     deviceAudioId: pref.get('visor.deviceAudio', null),
     audioMode: pref.get('visor.audioMode', 'all'), // off | all
@@ -42,6 +43,7 @@ export function useShareConfig() {
     setCfg((c) => {
       const next = { ...c, ...(typeof patch === 'function' ? patch(c) : patch) }
       pref.set('visor.kind', next.kind)
+      pref.set('visor.captureEngineStable', next.engine)
       pref.set('visor.device', next.deviceId)
       pref.set('visor.deviceAudio', next.deviceAudioId)
       pref.set('visor.audioMode', next.audioMode)
@@ -54,7 +56,7 @@ export function useShareConfig() {
   return [cfg, update]
 }
 
-export default function SharePanel({ cfg, update, live, open, peers, uplink, apps, onStart }) {
+export default function SharePanel({ cfg, update, live, open, peers, uplink, apps, nativeCapture, onStart }) {
   const preset = getPreset(cfg.presetId)
   const fpsOptions = PRESETS.filter((p) => p.res === preset.res).map((p) => p.fps)
   const pickPreset = (res, fps) => {
@@ -81,6 +83,7 @@ export default function SharePanel({ cfg, update, live, open, peers, uplink, app
 
       {!live && open && desktop && cfg.kind !== 'device' && <SourceGrid cfg={cfg} update={update} />}
       {!live && open && cfg.kind === 'device' && <DevicePicker cfg={cfg} update={update} />}
+      {!live && open && nativeCapture && cfg.kind !== 'device' && <EnginePicker cfg={cfg} update={update} />}
       {cfg.kind !== 'device' && open && <AudioPicker cfg={cfg} update={update} apps={apps} />}
 
       <div className="sp-row">
@@ -102,6 +105,32 @@ export default function SharePanel({ cfg, update, live, open, peers, uplink, app
 
       <BitrateRow cfg={cfg} update={update} peers={peers} uplink={uplink} live={live} open={open} onStart={onStart} />
     </div>
+  )
+}
+
+function EnginePicker({ cfg, update }) {
+  const selected = cfg.engine === 'rust' ? 'rust' : 'chromium'
+  return (
+    <Dropdown label="Motor de captura" trigger={
+      <>
+        <Cpu size={14} strokeWidth={1.75} className="dd-lead" />
+        <span className="dd-name">{selected === 'rust' ? 'Rust' : 'Chromium'}</span>
+      </>
+    }>
+      <ul className="dd-list" role="radiogroup" aria-label="Motor de captura">
+        {Object.entries({ chromium: 'Chromium', rust: 'Rust' }).map(([engine, name]) => {
+          const on = engine === selected
+          return (
+            <li key={engine}>
+              <button type="button" role="radio" aria-checked={on} className={`dd-row ${on ? 'is-on' : ''}`} onClick={() => update({ engine })}>
+                <span className="dd-check is-radio">{on && <Check size={11} strokeWidth={2.5} />}</span>
+                <span className="dd-name">{name}</span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </Dropdown>
   )
 }
 
@@ -358,6 +387,9 @@ function BitrateRow({ cfg, update, peers, uplink, live, open, onStart }) {
   return (
     <div className="sp-row bitrate-row">
       <JellySlider value={cfg.bitrate} limit={limit} onChange={(bitrate) => update({ bitrate })} />
+      {limit && <IconButton label="Usar limite medido" magnetic={false} onClick={() => update({bitrate: snapBitrate(limit)})}>
+        <ArrowUpToLine size={15} strokeWidth={1.75}/>
+      </IconButton>}
       <IconButton label={busy ? 'Medindo' : 'Medir rede'} className={`gauge-btn ${busy ? 'is-busy' : ''}`} disabled={busy || live} onClick={measure} magnetic={false}>
         <Gauge size={16} strokeWidth={1.75} />
       </IconButton>

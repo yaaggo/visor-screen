@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { supabase } from '../lib/supabase.js'
 import { Check, Copy } from 'lucide-react'
 
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -117,10 +118,14 @@ export function HoldButton({ label, onConfirm, children, ms = 900 }) {
   )
 }
 
-export function Avatar({ name = '?', size = 28 }) {
+const photoSession = Date.now()
+export function Avatar({ name = '?', size = 28, id, revision }) {
+  const url = id && supabase.storage.from('avatars').getPublicUrl(encodeURIComponent(id) + '.webp').data.publicUrl + '?v=' + (Number(revision) || photoSession)
+  const [failed, setFailed] = useState(null)
   return (
     <span className="avatar" style={{ width: size, height: size, fontSize: size * 0.42 }} aria-hidden>
       {name.slice(0, 1).toUpperCase()}
+      {url && failed !== url && <img alt="" src={url} onError={() => setFailed(url)} />}
     </span>
   )
 }

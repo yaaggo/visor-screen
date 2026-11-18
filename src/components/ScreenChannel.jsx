@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Activity, Eye, Maximize, MessageSquare, Minimize, Monitor, MonitorUp, Square, Volume2, VolumeX, X } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { ScreenRoom } from '../lib/screen.js'
@@ -39,18 +40,29 @@ function useAudioApps(enabled) {
   return apps
 }
 
-export default function ScreenChannel({ channel, profile, chatChannel }) {
+export default function ScreenChannel({ channel, profile, chatChannel, roster, photo, reportMember }) {
   const roomRef = useRef(null)
   const captureRef = useRef(null)
   const starting = useRef(false)
   const [s, setS] = useState({ peers: [], sharing: false, local: null, remote: null, watching: null, viewers: 0, preset: '1080p60', bitrate: 0, uplink: null, stats: null, remoteAudio: false })
+  const [hover, setHover] = useState(null)
+  const hoverTimer = useRef(null)
+  const [menu, setMenu] = useState(null)
   const [chat, setChat] = useState(() => pref.get('visor.chatOpen', true))
   const [cfg, update] = useShareConfig()
   const [error, setError] = useState(false)
+  const [nativeCapture, setNativeCapture] = useState(false)
   const [panelOpen, setPanelOpen] = useState(false)
   const needsAudioApps = cfg.kind !== 'device' && (panelOpen || (s.sharing && cfg.audioMode === 'all' && cfg.exclude.length > 0))
   const apps = useAudioApps(needsAudioApps)
   const targetKey = JSON.stringify(audioTargets(cfg, apps))
+
+  useEffect(() => {
+    if (!desktop || !window.visor.captureAvailable || typeof MediaStreamTrackGenerator !== 'function') return
+    let mounted = true
+    window.visor.captureAvailable().then((available) => mounted && setNativeCapture(available)).catch(() => {})
+    return () => { mounted = false }
+  }, [])
 
   useEffect(() => {
     const room = new ScreenRoom({ supabase, roomId: channel.id, me: { id: profile.id, name: profile.username }, onChange: setS })
@@ -59,6 +71,43 @@ export default function ScreenChannel({ channel, profile, chatChannel }) {
     room.join()
     return () => room.leave()
   }, [channel.id, profile.id, profile.username])
+
+  useEffect(() => {
+    const room = roomRef.current
+    room.me.photo = photo
+    if (room.channel) room.track()
+  }, [photo, channel.id])
+
+  const watchingKey = JSON.stringify((s.inputs ?? []).filter(v => !v.preview).map(v => v.id))
+  useEffect(() => {
+    reportMember?.({ channel: channel.id, name: profile.username, photo, sharing: s.sharing, watching: JSON.parse(watchingKey) })
+    return () => reportMember?.(null)
+  }, [channel.id, profile.username, photo, s.sharing, watchingKey, reportMember])
+  useEffect(() => () => clearTimeout(hoverTimer.current), [])
+  const hidePreview = () => { clearTimeout(hoverTimer.current); hoverTimer.current = setTimeout(() => setHover(null), 220) }
+
+  useEffect(() => {
+    if (!menu) return
+    const dismiss = e => { if (e.type !== 'keydown' || e.key === 'Escape') setMenu(null) }
+    window.addEventListener('pointerdown', dismiss)
+    window.addEventListener('blur', dismiss)
+    window.addEventListener('keydown', dismiss)
+    return () => {
+      window.removeEventListener('pointerdown', dismiss)
+      window.removeEventListener('blur', dismiss)
+      window.removeEventListener('keydown', dismiss)
+    }
+  }, [menu])
+
+  useEffect(() => {
+    if (!hover) return
+    const room = roomRef.current
+    const timer = setTimeout(() => room.watch(hover.id, true), 300)
+    return () => {
+      clearTimeout(timer)
+      if (room.inputs.get(hover.id)?.preview) room.stopWatching(hover.id)
+    }
+  }, [hover])
 
   // Desktop: reduz a disputa por CPU/GPU enquanto transmite.
   useEffect(() => {
@@ -90,18 +139,20 @@ export default function ScreenChannel({ channel, profile, chatChannel }) {
         cap = await captureDevice(cfg.deviceId, preset, cfg.deviceAudioId)
       } else if (desktop) {
         if (!cfg.sourceId) throw new Error('source')
-        cap = await captureDesktop(cfg.sourceId, preset, audioTargets(cfg, apps))
+        const engine = nativeCapture && cfg.engine === 'rust' ? 'rust' : 'chromium'
+        cap = await captureDesktop(cfg.sourceId, preset, audioTargets(cfg, apps), engine)
       } else {
         cap = await captureWeb(cfg.kind, preset, cfg.audioMode === 'all')
       }
       if (!(await room.startShare(cap, cfg.presetId, cfg.bitrate))) return false
       captureRef.current = cap
-      room.stopWatching()
       return true
     } catch (err) {
       if (err?.name !== 'NotAllowedError' && err?.name !== 'AbortError') {
-        setError(true)
-        setTimeout(() => setError(false), 500)
+        console.warn('[visor] captura', err)
+        setError(desktop && cfg.engine === 'rust' && cfg.kind !== 'device'
+          ? 'Falha na captura Rust. Confira a fonte ou escolha Chromium em Motor de captura.'
+          : 'Falha na captura. Selecione a fonte novamente.')
       }
       return false
     } finally {
@@ -109,43 +160,59 @@ export default function ScreenChannel({ channel, profile, chatChannel }) {
     }
   }
 
-  const stream = s.sharing && !s.watching ? s.local : s.remote
-  const sharers = s.peers.filter((p) => p.sharing)
+  const inputs = s.inputs ?? []
+  const tiles = inputs.filter(input => !input.preview)
+  if (s.sharing) tiles.unshift({ id: profile.id, stream: s.local })
+  const toggle = id => {
+    const room = roomRef.current
+    if (room.inputs.has(id) && !room.inputs.get(id).preview) room.stopWatching(id)
+    else room.watch(id)
+    setHover(null)
+    setMenu(null)
+  }
+  const person = (p, compact) => {
+    const own = p.id === profile.id
+    const active = tiles.some(tile => tile.id === p.id)
+    return <button key={p.id} className={'participant' + (p.sharing ? ' live' : '')} aria-label={p.name}
+      aria-pressed={p.sharing ? active : undefined}
+      onMouseEnter={e => {
+        clearTimeout(hoverTimer.current)
+        if (!p.sharing) return
+        const rect = e.currentTarget.getBoundingClientRect()
+        setHover({id:p.id, left:Math.min(innerWidth-212, Math.max(8,rect.left)), top:Math.max(8,rect.top-126)})
+      }} onMouseLeave={hidePreview}
+      onClick={() => { if (p.sharing && !own) { if (!active) toggle(p.id); else setHover(null) } }}
+      onContextMenu={e => {
+        if (!p.sharing || own) return
+        e.preventDefault()
+        setHover(null)
+        setMenu({ id:p.id, x:Math.min(innerWidth-160,e.clientX), y:Math.min(innerHeight-48,e.clientY) })
+      }}>
+      <span className="participant-face"><Avatar id={p.id} revision={own ? photo : p.photo} name={p.name} size={compact ? 24 : 60}/>{p.sharing && <i className="live-dot"/>}</span>
+      <span>{p.name}</span>{compact && !!p.watching?.length && <Eye size={12} aria-label="Assistindo"/>}
+    </button>
+  }
+  const hoverPeer = s.peers.find(p => p.id === hover?.id && p.sharing)
+  const preview = hoverPeer && (hoverPeer.id === profile.id ? s.local : inputs.find(v => v.id === hoverPeer.id)?.stream)
 
   return (
     <div className={`screen ${chat && chatChannel ? 'with-chat' : ''}`}>
+      {roster && createPortal(<div className="channel-people">{s.peers.map(p => person(p,true))}</div>, roster)}
+      {hoverPeer && createPortal(<button className="stream-hover" onMouseEnter={() => clearTimeout(hoverTimer.current)} onMouseLeave={hidePreview} onClick={() => { if (hoverPeer.id !== profile.id) roomRef.current.watch(hoverPeer.id); setHover(null) }} style={{left:hover.left, top:hover.top}}>
+        <video autoPlay muted playsInline ref={node => { if (node && node.srcObject !== preview) node.srcObject = preview ?? null }}/>
+        <small>{hoverPeer.name}</small>
+      </button>, document.body)}
+      {menu && createPortal(<button autoFocus className="stream-menu" style={{left:menu.x,top:menu.y}} onPointerDown={e => e.stopPropagation()}
+        onClick={() => toggle(menu.id)}>{tiles.some(v => v.id === menu.id) ? 'Parar de assistir' : 'Assistir'}</button>,document.body)}
       <div className="stage-wrap">
-        <Stage
-          stream={stream}
-          local={stream === s.local}
-          stats={s.stats}
-          sendStats={s.sendStats}
-          hasAudio={stream !== s.local && s.remoteAudio}
-          watchingName={s.peers.find((p) => p.id === s.watching)?.name}
-        />
+        {tiles.length ? <div className="stream-grid" data-count={tiles.length}>
+          {tiles.map(tile => <Stage key={tile.id} stream={tile.stream} local={tile.id === profile.id} stats={tile.stats}
+            sendStats={s.sendStats} captureEngine={s.captureEngine} captureStats={s.captureStats}
+            hasAudio={tile.id !== profile.id && !!tile.stream?.getAudioTracks().length}
+            watchingName={s.peers.find(p => p.id === tile.id)?.name}/>)}
+        </div> : <div className="call-lobby">{s.peers.map(p => person(p,false))}</div>}
 
-        {sharers.length > 0 && (
-          <div className="sharers">
-            {sharers.map((p) => {
-              const mine = p.id === profile.id
-              const on = mine ? s.sharing && !s.watching : s.watching === p.id
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  className={`sharer ${on ? 'is-on' : ''}`}
-                  data-tip={p.name}
-                  aria-label={p.name}
-                  onClick={() => (mine ? roomRef.current.stopWatching() : roomRef.current.watch(p.id))}
-                >
-                  <Avatar name={p.name} size={26} />
-                  <span className="sharer-q">{getPreset(p.preset).res}</span>
-                </button>
-              )
-            })}
-          </div>
-        )}
-
+        {tiles.length > 0 && <div className="call-strip">{s.peers.map(p => person(p,true))}</div>}
         <Island
           s={s}
           cfg={cfg}
@@ -153,7 +220,11 @@ export default function ScreenChannel({ channel, profile, chatChannel }) {
           onOpenChange={setPanelOpen}
           update={update}
           error={error}
-          onStart={start}
+          nativeCapture={nativeCapture}
+          onStart={() => {
+            setError(false)
+            return start()
+          }}
           onStop={() => {
             roomRef.current.stopShare()
             captureRef.current = null
@@ -183,7 +254,7 @@ export default function ScreenChannel({ channel, profile, chatChannel }) {
   )
 }
 
-function Stage({ stream, local, stats, sendStats, watchingName, hasAudio }) {
+function Stage({ stream, local, stats, sendStats, captureEngine, captureStats, watchingName, hasAudio }) {
   const [diag, setDiag] = useState(() => pref.get('visor.diag', false))
   const video = useRef(null)
   const box = useRef(null)
@@ -242,7 +313,7 @@ function Stage({ stream, local, stats, sendStats, watchingName, hasAudio }) {
           <Monitor size={30} strokeWidth={1.25} />
         </div>
       )}
-      {stream && diag && <Diagnostics local={local} stats={stats} sendStats={sendStats} />}
+      {stream && diag && <Diagnostics local={local} stats={stats} sendStats={sendStats} captureEngine={captureEngine} captureStats={captureStats} />}
       {stream && (
         <div className={`stage-hud ${blocked ? 'is-pinned' : ''}`}>
           <span className="hud-chip">
@@ -331,13 +402,22 @@ function Cell({ k, v, bad }) {
   )
 }
 
-function Diagnostics({ local, stats, sendStats }) {
+function Diagnostics({ local, stats, sendStats, captureEngine, captureStats }) {
   if (local) {
     const v = sendStats?.viewers ?? []
+    const captureDrops = (captureStats?.busy ?? 0) + (captureStats?.bridgeDrops ?? 0) + (captureStats?.writerDrops ?? 0)
     return (
       <div className="diag mono" role="group" aria-label="Diagnóstico da transmissão">
         <div className="dg-row">
+          {captureEngine && <Cell k="motor" v={captureEngine === 'rust' ? 'Rust' : 'Chromium'} />}
           <Cell k="fps captura" v={sendStats?.capture} />
+          {captureStats && (
+            <>
+              <Cell k="fps WGC" v={captureStats.source} />
+              <Cell k="fps texturas" v={captureStats.shared} />
+              <Cell k="descartes" v={captureDrops} bad={captureDrops > 0} />
+            </>
+          )}
         </div>
         {v.map((x) => (
           <div className="dg-row" key={x.id}>
@@ -348,6 +428,7 @@ function Diagnostics({ local, stats, sendStats }) {
             <Cell k="encoder" v={implementation(x.encoder, x.powerEfficient)} />
             <Cell k="ms/q" v={x.encodeMs} />
             <Cell k="mbps" v={mbps(x.kbps)} />
+            <Cell k="fila RTP" v={ms(x.sendQueueMs)} />
             <Cell k="res" v={x.height ? `${x.height}p` : null} />
             <Cell k="rtt" v={ms(x.rtt)} />
             <Cell k="perda" v={pct(x.loss)} bad={x.loss > 1} />
@@ -386,7 +467,7 @@ function Diagnostics({ local, stats, sendStats }) {
 }
 
 // Ilha que se expande do botao de transmitir (conceito "Morph island")
-function Island({ s, cfg, apps, onOpenChange, update, error, onStart, onStop }) {
+function Island({ s, cfg, apps, onOpenChange, update, error, nativeCapture, onStart, onStop }) {
   const [open, setOpen] = useState(false)
   useEffect(() => onOpenChange(open), [open, onOpenChange])
   const ref = useRef(null)
@@ -449,10 +530,12 @@ function Island({ s, cfg, apps, onOpenChange, update, error, onStart, onStop }) 
             peers={s.peers}
             uplink={s.uplink}
             apps={apps}
+            nativeCapture={nativeCapture}
             onStart={async () => {
               if (await onStart()) setOpen(false)
             }}
           />
+          {error && <span role="status" className="share-error">{error}</span>}
         </div>
       </div>
     </div>

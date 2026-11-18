@@ -7,3 +7,4 @@ release/
 supabase/.temp/
 supabase/.branches/
 electron/native/bin/*.obj
+electron/capture-rs/target/

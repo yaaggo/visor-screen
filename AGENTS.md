@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-18, fase 4 (fluidez e diagnostico da transmissao, v1.2.0).
+Ultima atualizacao: 2026-11-18, fase 6 (1.3.0, motor Rust, fotos e multiplas transmissoes).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -42,6 +42,8 @@ electron/
   main.cjs         janela (titleBarOverlay escuro), permissoes de midia, IPC: sources, audio:*, self-pid
   preload.cjs      expoe window.visor (contextIsolation + sandbox)
   audio.cjs        spawn/kill do visor-audio.exe, repassa PCM ao renderer (IPC 'audio:data')
+  capture.cjs      fonte selecionada, ciclo de vida do motor Rust e texturas compartilhadas
+  capture-rs/      helper Rust (WGC/D3D11) usado pelo motor experimental
   native/visor-audio.cpp   helper nativo; build.cmd compila em native/bin/
   icon.png, icon.ico
 src/
@@ -53,6 +55,7 @@ src/
   lib/screen.js    ScreenRoom: presenca, sinalizacao, peers, coleta de stats
   lib/screenStats.js   metricas de captura, codificacao, envio, recepcao e ICE a partir de getStats()
   lib/sources.js   captureWeb / captureDesktop / captureDevice / listDevices / matchAudio
+  lib/nativeCapture.js   recebe VideoFrame do preload e monta uma track WebRTC
   lib/appAudio.js  AppAudioMixer: AudioWorklet por app -> MediaStreamDestination (1 track)
   lib/net.js       measureUpload(): 4 envios paralelos de 4 MB, RTT aquecido
   components/Login.jsx, Shell.jsx, TextChannel.jsx, ui.jsx
@@ -172,6 +175,49 @@ npx vercel env add CLOUDFLARE_TURN_API_TOKEN production
 npx vercel deploy --prod --yes
 ```
 
+### Beta de captura Rust (1.3.0-beta.2)
+
+- No desktop, abra **Transmitir**, escolha **Tela** ou **Janela**, selecione uma fonte e abra **Motor de captura**.
+  Chromium e o padrao. Para comparar, pare a transmissao antes de trocar para Rust e inicie com a mesma fonte,
+  preset, bitrate e numero de espectadores. O icone de atividade mostra o motor usado.
+- Rust usa Windows Graphics Capture no adaptador grafico ativo do Electron. Faz a copia e a escala em D3D11
+  e entrega texturas compartilhadas ao `MediaStreamTrackGenerator`. O mesmo `ScreenRoom` trata sinalizacao,
+  codificacao e entrega WebRTC para os dois motores. O audio segue no mixer existente.
+- O tamanho das texturas respeita o preset e a proporcao da fonte. O helper recria o frame pool quando a
+  janela muda de tamanho e observa o fechamento da fonte. Numa janela minimizada o WGC pode parar de gerar
+  quadros. A sessao continua aguardando o retorno da fonte.
+- A beta.2 solicita o consentimento oficial de captura sem borda do Windows e chama
+  `SetIsBorderRequired(false)` antes de comecar. Se o Windows recusar, a captura Rust fica indisponivel.
+- O helper tem oito texturas reutilizaveis, liberadas apos o Electron acabar de usa-las. Quando a
+  transferencia ou a escrita atrasa, a beta.2 conserva so o quadro mais recente pendente em cada etapa.
+  O diagnostico Rust mostra `fps WGC`, `fps texturas`, descartes na captura/transferencia e o FPS que
+  chegou a track WebRTC. O sender Rust prioriza manter a resolucao do preset sob carga. No palco,
+  `fila RTP` mede o atraso medio por pacote no transmissor e `buffer` mede o atraso no espectador.
+- A beta.2 usa o perfil `visor-screen-beta` e o instalador `release/beta-2/Visor-Setup-1.3.0-beta.2.exe`.
+  O instalador e o portatil da beta.1 seguem em `release/beta/`.
+  Entre com a mesma conta para acessar os canais existentes.
+
+Comparacao repetivel no Windows, com Node e Rust MSVC. Abra o Vite e o Electron em terminais separados.
+
+```powershell
+npm run native:capture
+npm run dev
+npm run desktop:dev -- --remote-debugging-port=9333
+node scripts/compare-capture.mjs --list
+node scripts/compare-capture.mjs --source 'ID ou titulo exato' --preset 1080p60 --mbps 12 --out release/capture-ab.json
+npm run dist:win -- portable --config.directories.output=release/beta
+```
+
+O script alterna Chromium → Rust → Rust → Chromium, usa sinalizacao local, conta FPS de captura, codificacao,
+envio e decodificacao e salva as amostras apos cada rodada. Para usar um Chrome separado, abra o mesmo Vite num
+perfil de teste com porta de depuracao local e passe `--viewer-port 9336`. Para medir minimizar/maximizar ou a
+partida real, repita a mesma sequencia em ambas as rodadas e compare tambem travamentos e descartes do espectador.
+
+Para comparar com resolucao efetivamente igual, passe `--require-resolution 1920x1080`. O script registra a
+resolucao decodificada em cada amostra e sai com erro se alguma estiver fora do alvo. A cena repetivel em
+`scripts/fixtures/capture-1080.cjs` abre em tela cheia no monitor principal e grava o ID da fonte em
+`release/qa-1080/source.json`. Feche a cena ao terminar.
+
 ## Comandos
 
 ```
@@ -181,6 +227,7 @@ npm run desktop:dev         # Electron apontando para o vite dev (rode `npm run 
                             # (visor-screen-dev) e nao tem trava de instancia unica: convive com o app instalado aberto
 npm run desktop             # build + Electron com dist/
 npm run native              # recompila electron/native/bin/visor-audio.exe
+npm run native:capture      # compila o helper de captura Rust com o lockfile do Cargo
 npm run dist:win            # gera release/Visor-Setup-<versao>.exe e release/Visor-<versao>-portable.exe
 npx supabase db push --remote --yes
 npx supabase config diff / config push --yes
@@ -196,6 +243,26 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 
 ## Estado atual
 
+Fase 6 — Visor 1.3.0:
+- No desktop, Rust e o padrao para tela/janela. Chromium continua no seletor. Na web a fonte vem do navegador.
+  O helper guarda o quadro WGC mais recente e publica a cada intervalo do preset, preservando a base de tempo
+  do sistema. Um atraso nao gera uma rajada de quadros antigos.
+- 1080p60 comeca em 25 Mbps em configuracoes novas. Preferencias existentes sao preservadas. A negociacao parte
+  do bitrate selecionado e o painel permite aplicar o limite medido. Cada espectador tem controle de congestionamento.
+- O canal mostra participantes, nomes, avatares, indicador ao vivo e quem assiste. O espectador pode espiar por
+  hover, escolher varias telas e fechar so uma pelo menu de contexto. Cada recepcao tem ICE, retentativa,
+  estatisticas e volume independentes. O receptor solicita 80 ms de buffer quando o navegador suporta.
+- Fotos em Storage, bucket publico avatars. Cada usuario autenticado grava apenas <uid>.webp, ate 64 KiB.
+  Recorte local circular com arraste, setas e zoom; WebP quadrado de 256 px com a mesma mascara na exibicao.
+- Guia de uso e publicacao: TUTORIAL.md. Instalador e portatil em release/stable-1.3.0/.
+- QA em loopback: janela sintetica com 167 desenhos/s, WGC observado a 155 fps em uma amostra, espectador
+  Chrome separado. Duas rodadas finais a 50 Mbps, 18 amostras cada: 1920x1080 em 36/36, medianas
+  de envio e decodificacao de 60 fps, bitrate mediano de 26,98 e 28,75 Mbps. Zero descartes e novos
+  travamentos nessas rodadas; p95 entre apresentacoes 22 ms. Na rodada anterior ao ajuste de buffer,
+  houve um travamento. Dados: release/qa-1080/stable-playout.json. Ainda falta teste de partida entre redes.
+- Testados upload e substituicao na conta temporaria, foto de 686 bytes, presenca com foto sob o canal e
+  duas fontes WebRTC com encerramento independente.
+
 Feito:
 - Fase 1: Supabase + auth anonima, app web completo (servidores, canais, chat, transmissao), deploy Vercel
 - Fase 2: app desktop Electron; audio por aplicativo e "sistema sem eco" via helper nativo; dispositivos de video
@@ -205,6 +272,9 @@ Feito:
   abrindo para baixo (e acima na linha do bitrate) e sobre as linhas vizinhas
 - Fase 4: prioridade de CPU/GPU durante a live no Windows, previa local pausada sem foco, diagnostico nos dois lados,
   teste de upload fora da live e bitrate preservado
+- Fase 5 (beta local): seletor de motor para tela/janela no Windows, helper Rust WGC/D3D11, integracao de
+  texturas com WebRTC e script de comparacao. Na beta.2, borda desligada por consentimento do Windows,
+  filas limitadas no Rust e prioridade de resolucao no envio Rust. A versao estavel daquela fase era a 1.2.0.
 - Instaladores Windows em `release/` e nas GitHub Releases (sem assinatura, com aviso do SmartScreen).
   A 1.2.0 usa `Visor-Setup-1.2.0.exe` e `Visor-1.2.0-portable.exe`.
 - Repositorio git criado e enviado (privado) e conectado a Vercel: push em `main` = deploy de producao; outras branches = preview
@@ -231,16 +301,58 @@ Validacao da fase 4 (RTX 3050 Laptop, Electron 45.3.4):
 - `--enable-features=WebRtcAllowWgcUsingTexture` entregou a track de captura, mas o teste local parou de
   responder antes de entregar amostras RTP. A 1.2.0 usa a configuracao padrao de captura do Electron.
 
+Validacao da beta Rust:
+- Comparacao com resolucao fixa verificada pelo espectador. Mesma cena sintetica em tela cheia no monitor
+  principal da RTX 3050, preset 1080p60, teto de 25 Mbps e Chrome 135 headless separado em loopback.
+  Seis segundos de aquecimento e sete amostras por motor. As 14 amostras decodificaram a 1920x1080.
+  Chromium enviou e decodificou mediana de 34 fps (34–36). Rust enviou mediana de 60 fps (60 em todas
+  as amostras) e decodificou mediana de 60 fps (59–61). Nenhum descarte ou travamento nas amostras.
+  Dados em `release/qa-1080/ab.json`.
+- Loopback com janela WebGL a 180 fps no monitor secundario, Electron 45.3.4 no transmissor e
+  Chrome 135 headless separado no espectador. Preset 1080p60, 12 Mbps, sem audio capturado.
+  Oito amostras por rodada. Ordem Chromium, Rust, Rust, Chromium.
+- Mediana de FPS enviado: 34, 60, 60, 36. Mediana de FPS decodificado: 34, 60, 60, 35.5.
+  A resolucao recebida teve altura mediana de 768 px no Chromium e 512 px no Rust. Ambos usaram
+  H.264 e sinalizaram limite de banda com esse padrao sintetico. Zero descartes e travamentos medidos.
+  O RTCPeerConnection expos o encoder NVIDIA nas rodadas Chromium. Nas rodadas Rust o campo
+  `encoderImplementation` ficou ausente. As amostras locais estao em `release/qa-rust/ab-secondary.json`.
+- Teste da interface com a janela sintetica: troca pelo seletor, dados Rust no diagnostico, envio
+  com a previa pausada, parada da transmissao e preservacao do bitrate.
+- Rust produziu video a 1280x720 nos dois monitores. Trocar 1080p60 para 720p30 durante a captura
+  diminuiu a imagem e a taxa de texturas para 30 FPS. A janela redimensionada e restaurada voltou a
+  produzir video. Minimizada, a track ficou ativa com 0 quadros novos. Fechar a janela encerrou a track.
+- O executavel portatil abriu com `file:`, carregou o helper Rust empacotado e recebeu texturas reais
+  da janela sintetica.
+
+Validacao da beta.2:
+- O Windows retornou `Allowed` para captura sem borda. O helper confirmou a configuracao antes de iniciar.
+  Teste isolado da fila do renderer reteve o quadro mais recente quando a escrita ficou ocupada.
+- A cena em tela cheia com transicoes (`--transitions`) manteve 1920x1080 em todas as 13 amostras de cada
+  motor, a 12 Mbps de teto. Mediana de envio de 54 FPS no Chromium e 60 FPS no Rust. P95 da recepcao
+  a apresentacao de 97 ms e 88 ms. Nenhum travamento contabilizado. Arquivos locais
+  `release/qa-1080/transitions-before.json` e `release/qa-1080/transitions-after.json`.
+- Na cena WebGL pesada em janela no secundario, o Rust enviou 1920x1024 (dimensoes da fonte) em 8/8
+  amostras, mediana de 59 FPS. O p95 do buffer medido no Chrome chegou a 116 ms. O Chromium enviou
+  1440x768 ou 960x512, mediana de 44 FPS, com p95 de 8 ms no buffer. Dados em
+  `release/qa-1080/heavy-after.json`. A queda do Rust para 540p30 relatada na partida ainda precisa de
+  uma nova medicao na mesma cena e no mesmo espectador.
+
 Nao verificado:
 - Fluidez em uma partida real, FPS do jogo com boost e comportamento quando a GPU fica saturada.
 - Transmissao real entre duas maquinas/redes diferentes (so loopback local e mesma maquina)
 - Captura `include` de um jogo especifico tocando som (a API e a mesma do modo sistema, que foi verificado)
 - Placa de captura fisica (o painel do navegador de teste bloqueia camera)
 
+Comparacao com Twitch (2026-11-18):
+- A captura de jogo do OBS, quando usada, pode acessar os quadros do jogo diretamente. Nos testes locais
+  do Visor 1.2.0, o FPS ja caia na captura mesmo com H.264 em hardware. Falta comparar em uma partida real.
+- O prototipo WGC/D3D11 em `electron/capture-rs` esta ligado ao seletor de motor na beta desktop.
+  OBS via WHIP e uma opcao para testar captura de jogo com entrega WebRTC. Um SFU pode reduzir o upload
+  do transmissor com varios espectadores, enquanto o buffer de reproducao da Twitch suaviza variacoes de rede com atraso adicional.
+
 Proximos passos sugeridos:
-- Se o FPS de captura continuar baixo numa partida real no monitor principal, comparar com um prototipo
-  desktop de WGC/D3D11 e encoder de hardware, preservando a interface React. A prova de conceito deve
-  medir FPS capturado, codificado e entregue ao mesmo espectador WebRTC no navegador.
+- Comparar os dois motores numa partida real no monitor principal, com o mesmo espectador WebRTC.
+  Repetir com tela inteira e com janela. Conferir tambem retomada apos minimizar e carga de GPU do jogo.
 - Repo e privado: so quem tem acesso baixa o instalador. Para amigos baixarem, tornar o repo publico ou criar um repo
   publico so de releases; depois adicionar botao de download na versao web
 - Nova versao do desktop: `npm version X.Y.Z --no-git-tag-version`, `npm run native` se o C++ mudou,

@@ -34,20 +34,22 @@ export class ScreenRoom {
     this.preset = getPreset()
     this.bitrate = this.preset.bitrate
     this.cleanup = null // libera mixer/dispositivos da fonte atual
+    this.captureEngine = null
+    this.setCapturePreset = null
+    this.getCaptureStats = null
     this.uplink = null // menor availableOutgoingBitrate entre espectadores (bps)
     this.out = new Map() // viewerId -> RTCPeerConnection
-    this.inPc = null
-    this.inSid = null
-    this.pendingIce = []
-    this.watching = null // { id, shareId }
-    this.remote = null // MediaStream
-    this.stats = null // { width, height, fps, kbps }
+    this.inputs = new Map()
     this.sendStats = null
     this.statsHistory = new WeakMap()
     this.pollingStats = false
-    this.manual = false // espectador escolheu parar de assistir
     this.closed = false
   }
+
+  get primary() { return this.inputs.values().next().value }
+  get remote() { return this.primary?.stream ?? null }
+  get inPc() { return this.primary?.pc ?? null }
+  get stats() { return this.primary?.stats ?? null }
 
   emit() {
     if (this.closed) return
@@ -56,13 +58,16 @@ export class ScreenRoom {
       sharing: !!this.local,
       local: this.local,
       remote: this.remote,
-      watching: this.watching?.id ?? null,
+      watching: this.primary?.id ?? null,
+      inputs: [...this.inputs.values()].map(({ id, stream, stats, preview }) => ({ id, stream, stats, preview })),
       viewers: this.out.size,
       preset: this.preset.id,
       bitrate: this.bitrate,
       uplink: this.uplink,
       stats: this.stats,
       sendStats: this.sendStats,
+      captureEngine: this.captureEngine,
+      captureStats: this.getCaptureStats?.(),
       remoteAudio: !!this.remote?.getAudioTracks().length,
     })
   }
@@ -87,6 +92,8 @@ export class ScreenRoom {
   track() {
     return this.channel?.track({
       name: this.me.name,
+      photo: this.me.photo,
+      watching: [...this.inputs.values()].filter((v) => !v.preview).map((v) => v.id),
       sharing: !!this.local,
       shareId: this.shareId,
       preset: this.preset.id,
@@ -106,16 +113,12 @@ export class ScreenRoom {
       if (!state[id]) this.closeOut(id)
     }
 
-    const target = this.watching && this.peers.find((p) => p.id === this.watching.id)
-    if (this.watching && (!target?.sharing || target.shareId !== this.watching.shareId)) {
-      const restarted = target?.sharing
-      this.stopWatching(false)
-      if (restarted) this.watch(target.id)
-    }
-    if (!this.peers.some((p) => p.sharing && p.id !== this.me.id)) this.manual = false
-    if (!this.watching && !this.manual) {
-      const first = this.peers.find((p) => p.sharing && p.id !== this.me.id)
-      if (first) this.watch(first.id)
+    for (const input of this.inputs.values()) {
+      const peer = this.peers.find((p) => p.id === input.id)
+      if (!peer?.sharing || peer.shareId !== input.shareId) {
+        this.stopWatching(input.id)
+        if (peer?.sharing) this.watch(peer.id, input.preview)
+      }
     }
     this.emit()
   }
@@ -124,7 +127,7 @@ export class ScreenRoom {
 
   // capture: { stream, cleanup } vindo de sources.js
   async startShare(capture, presetId, bitrate) {
-    if (this.closed) {
+    if (this.closed || capture.stream.getVideoTracks()[0]?.readyState !== 'live') {
       capture.stream.getTracks().forEach((t) => t.stop())
       capture.cleanup?.()
       return false
@@ -140,6 +143,9 @@ export class ScreenRoom {
     this.stopShare(false)
     this.local = stream
     this.cleanup = capture.cleanup
+    this.captureEngine = capture.engine
+    this.setCapturePreset = capture.setPreset
+    this.getCaptureStats = capture.getStats
     this.shareId = uid()
     await this.track()
     this.emit()
@@ -151,11 +157,13 @@ export class ScreenRoom {
     this.local.getTracks().forEach((t) => t.stop())
     this.cleanup?.()
     this.cleanup = null
+    this.captureEngine = null
+    this.setCapturePreset = null
+    this.getCaptureStats = null
     this.uplink = null
     this.sendStats = null
     this.local = null
     this.shareId = null
-    this.manual = false
     for (const id of [...this.out.keys()]) this.closeOut(id)
     if (announce) this.track()
     this.emit()
@@ -166,7 +174,10 @@ export class ScreenRoom {
     if (this.local) {
       const [video] = this.local.getVideoTracks()
       video.contentHint = this.preset.fps >= 60 ? 'motion' : 'detail'
-      await video.applyConstraints(videoConstraints(this.preset)).catch(() => {})
+      const constraints = this.setCapturePreset
+        ? this.setCapturePreset(this.preset)
+        : video.applyConstraints(videoConstraints(this.preset))
+      await constraints.catch(() => {})
       await this.retune()
       this.track()
     }
@@ -180,8 +191,11 @@ export class ScreenRoom {
   }
 
   async retune() {
+    const keepResolution = this.captureEngine === 'rust'
     for (const pc of this.out.values()) {
-      for (const s of pc.getSenders()) if (s.track) await tuneSender(s, this.preset, this.bitrate)
+      for (const sender of pc.getSenders()) {
+        if (sender.track) await tuneSender(sender, this.preset, this.bitrate, keepResolution)
+      }
     }
   }
 
@@ -190,6 +204,7 @@ export class ScreenRoom {
     this.closeOut(viewerId)
     const pc = new RTCPeerConnection({ iceServers: this.ice })
     pc.sid = sid
+    pc.pendingIce = []
     this.out.set(viewerId, pc)
     const [video] = this.local.getVideoTracks()
     const sender = pc.addTrack(video, this.local)
@@ -202,7 +217,7 @@ export class ScreenRoom {
     }
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
-    await tuneSender(sender, this.preset, this.bitrate)
+    await tuneSender(sender, this.preset, this.bitrate, this.captureEngine === 'rust')
     for (const a of audioSenders) await tuneSender(a, this.preset, this.bitrate)
     this.send(viewerId, 'offer', { sid, sdp: pc.localDescription.toJSON() })
     this.emit()
@@ -222,74 +237,90 @@ export class ScreenRoom {
 
   // ---------- espectador ----------
 
-  watch(sharerId) {
-    const target = this.peers.find((p) => p.id === sharerId && p.sharing)
-    if (!target) return
-    this.stopWatching(false)
-    this.manual = false
-    this.watching = { id: target.id, shareId: target.shareId }
-    this.inSid = uid()
-    this.send(target.id, 'request', { sid: this.inSid })
-    // re-tenta se nada chegar
-    clearTimeout(this.retryTimer)
-    const sid = this.inSid
-    this.retryTimer = setTimeout(() => {
-      if (this.inSid === sid && !this.remote) this.watch(sharerId)
-    }, 6000)
+  watch(id, preview = false) {
+    const peer = this.peers.find((p) => p.id === id && p.sharing)
+    if (!peer || id === this.me.id || this.closed) return
+    const current = this.inputs.get(id)
+    if (current) {
+      if (!preview && current.preview) {
+        current.preview = false
+        this.track()
+        this.emit()
+      }
+      return
+    }
+    const input = { id, shareId: peer.shareId, preview, sid: uid(), candidates: [], stream: null, stats: null }
+    this.inputs.set(id, input)
+    const retry = () => {
+      if (this.inputs.get(id) !== input || input.pc?.connectionState === 'connected') return
+      this.stopWatching(id)
+      this.watch(id, input.preview)
+    }
+    input.retry = retry
+    input.timer = setTimeout(retry, 9000)
+    this.send(id, 'request', { sid: input.sid })
+    if (!preview) this.track()
     this.emit()
   }
 
-  stopWatching(manual = true) {
-    clearTimeout(this.retryTimer)
-    if (this.inPc) {
-      this.inPc.ontrack = null
-      this.inPc.onconnectionstatechange = null
-      this.inPc.close()
+  stopWatching(id) {
+    if (id == null) {
+      for (const key of [...this.inputs.keys()]) this.stopWatching(key)
+      return
     }
-    this.inPc = null
-    this.inSid = null
-    this.pendingIce = []
-    this.remote = null
-    this.stats = null
-    this.watching = null
-    if (manual) this.manual = true
+    const input = this.inputs.get(id)
+    if (!input) return
+    this.inputs.delete(id)
+    clearTimeout(input.timer)
+    this.send(id, 'unwatch', { sid: input.sid })
+    if (input.pc) {
+      input.pc.onconnectionstatechange = input.pc.ontrack = null
+      input.pc.close()
+    }
+    if (!input.preview && !this.closed) this.track()
     this.emit()
   }
 
   async answer(from, sid, sdp) {
-    if (sid !== this.inSid || this.watching?.id !== from) return
+    const input = this.inputs.get(from)
+    if (!input || input.sid !== sid || input.pc) return
     const pc = new RTCPeerConnection({ iceServers: this.ice })
-    this.inPc = pc
+    input.pc = pc
     pc.ontrack = (e) => {
-      this.remote = e.streams[0] ?? new MediaStream([e.track])
-      clearTimeout(this.retryTimer)
+      // Give a 60 fps viewer a few frames to absorb uneven packet arrival.
+      if (e.track.kind === 'video' && 'jitterBufferTarget' in e.receiver) {
+        try { e.receiver.jitterBufferTarget = 80 } catch { /* optional receiver hint */ }
+      }
+      input.stream = e.streams[0] ?? input.stream ?? new MediaStream()
+      if (!input.stream.getTracks().includes(e.track)) input.stream.addTrack(e.track)
       this.emit()
     }
     pc.onicecandidate = (e) => e.candidate && this.send(from, 'ice', { sid, candidate: e.candidate.toJSON(), dir: 'up' })
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed' && this.inPc === pc) {
-        const id = this.watching?.id
-        this.stopWatching(false)
-        if (id) setTimeout(() => this.watch(id), 1500)
-      }
+      if (pc.connectionState === 'failed') input.retry()
+      if (pc.connectionState === 'connected') clearTimeout(input.timer)
     }
     await pc.setRemoteDescription(sdp)
-    for (const c of this.pendingIce.splice(0)) await pc.addIceCandidate(c).catch(() => {})
-    const ans = await pc.createAnswer()
-    await pc.setLocalDescription(ans)
-    this.send(from, 'answer', { sid, sdp: pc.localDescription.toJSON() })
+    for (const c of input.candidates.splice(0)) await pc.addIceCandidate(c).catch(() => {})
+    await pc.setLocalDescription(await pc.createAnswer())
+    if (this.inputs.get(from) === input) this.send(from, 'answer', { sid, sdp: pc.localDescription.toJSON() })
   }
 
   // ---------- sinalizacao ----------
 
   async onSignal({ from, type, sid, sdp, candidate, dir }) {
     try {
-      if (type === 'request') return this.serve(from, sid)
-      if (type === 'offer') return this.answer(from, sid, sdp)
+      if (type === 'unwatch' && this.out.get(from)?.sid === sid) {
+        this.closeOut(from)
+        return this.emit()
+      }
+      if (type === 'request') return await this.serve(from, sid)
+      if (type === 'offer') return await this.answer(from, sid, sdp)
       if (type === 'answer') {
         const pc = this.out.get(from)
         if (pc?.sid === sid && pc.signalingState === 'have-local-offer') {
           await pc.setRemoteDescription({ type: sdp.type, sdp: mungeAnswer(sdp.sdp, this.bitrate) })
+          for (const c of pc.pendingIce.splice(0)) await pc.addIceCandidate(c).catch(() => {})
           await this.retune()
         }
         return
@@ -297,14 +328,18 @@ export class ScreenRoom {
       if (type === 'ice') {
         if (dir === 'up') {
           const pc = this.out.get(from)
-          if (pc?.sid === sid) await pc.addIceCandidate(candidate).catch(() => {})
-        } else if (sid === this.inSid) {
-          if (this.inPc?.remoteDescription) await this.inPc.addIceCandidate(candidate).catch(() => {})
-          else this.pendingIce.push(candidate)
+          if (pc?.sid === sid) {
+            if (pc.remoteDescription) await pc.addIceCandidate(candidate)
+            else pc.pendingIce.push(candidate)
+          }
+        } else {
+          const input = this.inputs.get(from)
+          if (input?.sid !== sid) return
+          if (input.pc?.remoteDescription) await input.pc.addIceCandidate(candidate)
+          else input.candidates.push(candidate)
         }
-        return
       }
-      if (type === 'unavailable' && sid === this.inSid) this.stopWatching(false)
+      if (type === 'unavailable' && this.inputs.get(from)?.sid === sid) this.stopWatching(from)
     } catch (err) {
       console.warn('[screen] signal', type, err)
     }
@@ -312,23 +347,25 @@ export class ScreenRoom {
 
   // Guarda a ultima amostra por conexao e evita polls sobrepostos.
   async pollStats() {
-    if (this.pollingStats || (!this.out.size && !this.inPc)) return
+    if (this.pollingStats || (!this.out.size && !this.inputs.size && !this.getCaptureStats)) return
     this.pollingStats = true
     try {
       const share = this.local
-      const inbound = this.inPc
+      const inbound = [...this.inputs.values()]
       const outgoing = [...this.out]
       const samples = await Promise.all([
-        this.sampleStats(inbound),
+        Promise.all(inbound.map((input) => this.sampleStats(input.pc))),
         ...outgoing.map(([, pc]) => this.sampleStats(pc)),
       ])
       if (this.closed) return
 
       let changed = false
-      if (inbound && this.inPc === inbound) {
-        this.stats = readInboundVideo(...samples[0])
-        changed = true
-      }
+      inbound.forEach((input, i) => {
+        if (this.inputs.get(input.id) === input) {
+          input.stats = readInboundVideo(...samples[0][i])
+          changed = true
+        }
+      })
       if (share && this.local === share) {
         const viewers = outgoing.flatMap(([id, pc], i) => {
           if (this.out.get(id) !== pc) return []
@@ -362,10 +399,9 @@ export class ScreenRoom {
 
   leave() {
     this.stopShare(false)
-    this.stopWatching(false)
     this.closed = true
+    this.stopWatching()
     clearInterval(this.statsTimer)
-    clearTimeout(this.retryTimer)
     if (this.channel) this.supabase.removeChannel(this.channel)
   }
 }

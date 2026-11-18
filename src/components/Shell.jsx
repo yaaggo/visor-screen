@@ -1,9 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Hash, LogOut, Monitor, Plus, Trash2, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { go, inviteUrl, useRoute } from '../lib/route.js'
 import { Avatar, CopyButton, HoldButton, IconButton, Segmented, usePopover } from './ui.jsx'
 import TextChannel from './TextChannel.jsx'
+import ProfilePhoto from './ProfilePhoto.jsx'
 import ScreenChannel from './ScreenChannel.jsx'
 
 // Lista viva de uma tabela (select inicial + realtime)
@@ -51,6 +52,38 @@ export default function Shell({ profile }) {
   const [servers, setServers] = useLive('servers', null, 'created_at', [])
   const [channels, setChannels] = useLive('channels', serverId ? ['server_id', serverId] : false, 'created_at', [serverId])
   const [collapsed, setCollapsed] = useState(false)
+
+  const [editing, setEditing] = useState(false)
+  const [photo, setPhoto] = useState(0)
+  const [roster, setRoster] = useState(null)
+
+  const directory = useRef(null)
+  const member = useRef(null)
+  const [visitors, setVisitors] = useState([])
+  const reportMember = useCallback(value => {
+    member.current = value
+    // Effects can replace a status during the same React commit.
+    queueMicrotask(() => {
+      if (member.current !== value || !directory.current) return
+      if (value) directory.current.track(value)
+      else directory.current.untrack()
+    })
+  }, [])
+  useEffect(() => {
+    setVisitors([])
+    if (!serverId) return
+    let alive = true
+    const dir = supabase.channel('calls:' + serverId, { config: { presence: { key: profile.id } } })
+    dir.on('presence', { event: 'sync' }, () => {
+      if (alive) setVisitors(Object.entries(dir.presenceState()).flatMap(([id, entries]) => entries.map(meta => ({ ...meta, id }))))
+    }).subscribe(status => {
+      if (alive && status === 'SUBSCRIBED') {
+        directory.current = dir
+        if (member.current) dir.track(member.current)
+      }
+    })
+    return () => { alive = false; directory.current = null; supabase.removeChannel(dir) }
+  }, [serverId, profile.id])
 
   const server = servers?.find((s) => s.id === serverId) ?? null
   const channel = channels?.find((c) => c.id === channelId) ?? null
@@ -116,15 +149,16 @@ export default function Shell({ profile }) {
         />
         <CreateServer onCreate={createServer} />
         <div className="rail-foot">
-          <span className="me" data-tip={profile.username}>
-            <Avatar name={profile.username} size={32} />
-          </span>
+          <button className="me" aria-label="Editar foto de perfil" data-tip={profile.username} onClick={() => setEditing(true)}>
+            <Avatar id={profile.id} revision={photo} name={profile.username} size={32} />
+          </button>
           <IconButton label="Sair" onClick={logout}>
             <LogOut size={16} strokeWidth={1.75} />
           </IconButton>
         </div>
       </nav>
 
+      {editing && <ProfilePhoto profile={profile} saved={setPhoto} close={() => setEditing(false)} />}
       <aside className="sidebar" aria-label="Canais">
         {server ? (
           <>
@@ -137,7 +171,7 @@ export default function Shell({ profile }) {
               items={channels ?? []}
               activeId={channelId}
               render={(c) => (
-                <div key={c.id} data-id={c.id} className="channel-row">
+                <div key={c.id}><div data-id={c.id} className="channel-row">
                   <button type="button" className={`channel ${c.id === channelId ? 'is-active' : ''}`} onClick={() => go(serverId, c.id)}>
                     {c.kind === 'text' ? <Hash size={15} strokeWidth={1.75} /> : <Monitor size={15} strokeWidth={1.75} />}
                     <span>{c.name}</span>
@@ -147,6 +181,12 @@ export default function Shell({ profile }) {
                       <Trash2 size={13} strokeWidth={1.75} />
                     </button>
                   )}
+                </div>
+                  {c.id !== channelId && c.kind === 'screen' && <div className="channel-people">{visitors.filter(v => v.channel === c.id).map(v =>
+                    <button key={v.presence_ref} className="participant" onClick={() => go(serverId,c.id)}>
+                      <span className="participant-face"><Avatar id={v.id} revision={v.photo} name={v.name} size={24}/>{v.sharing && <i className="live-dot"/>}</span>{v.name}
+                    </button>)}</div>}
+                  {c.id === channelId && c.kind === 'screen' && <div ref={setRoster} />}
                 </div>
               )}
             />
@@ -182,7 +222,7 @@ export default function Shell({ profile }) {
           ) : channel?.kind === 'text' ? (
             <TextChannel key={channel.id} channel={channel} profile={profile} />
           ) : channel?.kind === 'screen' ? (
-            <ScreenChannel key={channel.id} channel={channel} profile={profile} chatChannel={firstText} />
+            <ScreenChannel reportMember={reportMember} roster={roster} photo={photo} key={channel.id} channel={channel} profile={profile} chatChannel={firstText} />
           ) : null}
         </div>
       </main>

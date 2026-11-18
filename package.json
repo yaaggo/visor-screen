@@ -1,16 +1,17 @@
 {
   "name": "visor-screen",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "native": "cmd /c electron\\native\\build.cmd",
+    "native:capture": "cargo build --release --locked --manifest-path electron/capture-rs/Cargo.toml",
     "desktop": "vite build && electron .",
     "desktop:dev": "cross-env VISOR_DEV_URL=http://localhost:5173 electron .",
-    "dist:win": "vite build && electron-builder --win"
+    "dist:win": "npm run native:capture && vite build && electron-builder --win"
   },
   "engines": {
     "node": ">=22.12.0"
@@ -48,6 +49,10 @@
       {
         "from": "electron/native/bin/visor-audio.exe",
         "to": "bin/visor-audio.exe"
+      },
+      {
+        "from": "electron/capture-rs/target/release/visor-capture.exe",
+        "to": "bin/visor-capture.exe"
       }
     ],
     "win": {

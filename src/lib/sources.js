@@ -2,6 +2,7 @@
 import { desktop } from './env.js'
 import { videoConstraints } from './quality.js'
 import { AppAudioMixer } from './appAudio.js'
+import { captureNative } from './nativeCapture.js'
 
 const RAW_AUDIO = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2, sampleRate: 48000 }
 
@@ -19,8 +20,8 @@ export async function captureWeb(surface, preset, withAudio) {
 }
 
 // Desktop: fonte escolhida no seletor proprio + mixer de audio por app.
-export async function captureDesktop(sourceId, preset, audioTargets) {
-  const video = await navigator.mediaDevices.getUserMedia({
+function captureChromium(sourceId, preset) {
+  return navigator.mediaDevices.getUserMedia({
     audio: false,
     video: {
       mandatory: {
@@ -33,16 +34,32 @@ export async function captureDesktop(sourceId, preset, audioTargets) {
       },
     },
   })
+}
+
+export async function captureDesktop(sourceId, preset, audioTargets, engine = 'chromium') {
+  const native = engine === 'rust' ? await captureNative(sourceId, preset) : null
+  const video = native?.track ?? (await captureChromium(sourceId, preset)).getVideoTracks()[0]
   const mixer = new AppAudioMixer()
   try {
     await mixer.set(audioTargets)
   } catch (error) {
-    video.getTracks().forEach((track) => track.stop())
+    native?.stop()
+    video.stop()
     mixer.close()
     throw error
   }
-  const stream = new MediaStream([...video.getVideoTracks(), mixer.track])
-  return { stream, mixer, cleanup: () => mixer.close() }
+  const stream = new MediaStream([video, mixer.track])
+  return {
+    stream,
+    mixer,
+    engine,
+    setPreset: native?.setPreset,
+    getStats: native?.getStats,
+    cleanup: () => {
+      native?.stop()
+      mixer.close()
+    },
+  }
 }
 
 // Placa de captura / webcam + (opcional) entrada de audio do proprio dispositivo.
