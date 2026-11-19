@@ -5,6 +5,8 @@ $file = Get-Item -LiteralPath "release/Visor-Setup-$Version.exe"
 # O CLI do Supabase interpreta 'C:' como esquema; use caminhos relativos dentro de release/ (ignorada pelo git)
 $folder = New-Item -ItemType Directory -Path (Join-Path 'release' ('update-' + [guid]::NewGuid().ToString('N')))
 function Publish-Object($source,$target,$mime) {
+  # O CLI nao sobrescreve objetos: apaga a versao anterior do mesmo caminho (ausente = sem efeito)
+  npx.cmd supabase storage rm "ss:///desktop-updates/$target" --remote=gyqnzjjvugrfpbnfjbrf --experimental --yes *> $null
   npx.cmd supabase storage cp (Resolve-Path -Relative $source) "ss:///desktop-updates/$target" --remote=gyqnzjjvugrfpbnfjbrf --experimental --content-type $mime --cache-control no-store --yes
   if ($LASTEXITCODE -ne 0) {throw "Falha ao publicar $target"}
 }

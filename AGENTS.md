@@ -252,6 +252,10 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Lixeira: uma camada clara sobe pela carta durante os 1,5 s sobre a lixeira.
 - Atualizador: ao achar versao nova, o main baixa e verifica o instalador em segundo plano; o icone so
   aparece quando esta pronto. O clique roda `/S --force-run`, fecha e o instalador reabre o Visor.
+- Testado no app instalado: 1.7.0 -> 1.7.1 pelo botao (download ~12 s, fechou, instalou e reabriu na 1.7.1
+  em ~30 s). Fluxo em segundo plano da 1.7.1 validado contra o canal real (pronto em ~3 s, segunda checagem `ready`).
+- `publish-update.ps1` apaga cada objeto antes de enviar (o CLI nao sobrescreve). O bucket e do plano gratuito
+  (~120 MB por versao): apague as partes de versoes antigas depois de publicar.
 
 1.7.0 — atualizacao automatica, lateral nova e lixeira do deck (2026-11-19):
 - Desktop empacotado consulta `desktop-updates/latest.json` (bucket privado do Supabase, leitura para
