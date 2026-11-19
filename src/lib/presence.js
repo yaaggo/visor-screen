@@ -26,8 +26,8 @@ export const deviceKind = detectDeviceKind()
 // - ignora estado identico ao ultimo confirmado, enquanto a propria presenca estiver no canal
 // - no maximo MAX_TRACKS por janela; o excedente espera a janela liberar
 // - repete apos falha e confere a cada 10 s se a propria presenca sumiu
-const WINDOW_MS = 30000
-const MAX_TRACKS = 4
+const WINDOW_MS = 10000
+const MAX_TRACKS = 5
 const GROUP_MS = 250
 
 export function presencePublisher(publish, { snapshot = () => null, present = () => true } = {}) {
