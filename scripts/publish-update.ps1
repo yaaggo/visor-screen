@@ -2,9 +2,10 @@ param([string]$Version = (Get-Content package.json -Raw | ConvertFrom-Json).vers
 $ErrorActionPreference = 'Stop'
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'Versão inválida' }
 $file = Get-Item -LiteralPath "release/Visor-Setup-$Version.exe"
-$folder = New-Item -ItemType Directory -Path (Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString()))
+# O CLI do Supabase interpreta 'C:' como esquema; use caminhos relativos dentro de release/ (ignorada pelo git)
+$folder = New-Item -ItemType Directory -Path (Join-Path 'release' ('update-' + [guid]::NewGuid().ToString('N')))
 function Publish-Object($source,$target,$mime) {
-  npx.cmd supabase storage cp $source "ss:///desktop-updates/$target" --remote=gyqnzjjvugrfpbnfjbrf --experimental --content-type $mime --cache-control no-store
+  npx.cmd supabase storage cp (Resolve-Path -Relative $source) "ss:///desktop-updates/$target" --remote=gyqnzjjvugrfpbnfjbrf --experimental --content-type $mime --cache-control no-store --yes
   if ($LASTEXITCODE -ne 0) {throw "Falha ao publicar $target"}
 }
 try {
