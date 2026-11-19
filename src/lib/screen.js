@@ -55,6 +55,7 @@ export class ScreenRoom {
   emit() {
     if (this.closed) return
     this.onChange({
+      connected: this.channel?.state === 'joined',
       peers: this.peers,
       sharing: !!this.local,
       local: this.local,
@@ -77,7 +78,7 @@ export class ScreenRoom {
     this.ice = await loadIce()
     if (this.closed) return
     this.channel = this.supabase.channel(`screen:${this.roomId}`, {
-      config: { broadcast: { self: false }, presence: { key: this.me.id } },
+      config: { private: true, broadcast: { self: false }, presence: { key: this.me.id } },
     })
     this.publisher = presencePublisher(() => this.channel.state === 'joined' && this.publishPresence())
     this.channel
@@ -87,6 +88,7 @@ export class ScreenRoom {
       })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') this.track()
+        this.emit()
       })
     this.statsTimer = setInterval(() => this.pollStats(), 1000)
   }

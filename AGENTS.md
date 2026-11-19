@@ -243,6 +243,20 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 
 ## Estado atual
 
+1.4.0 — central de servidores e continuidade da call (2026-11-18):
+- A central lista servidores criados pela conta ou adicionados por codigo de convite. O mais se transforma
+  em Criar/Entrar. O codigo de dez caracteres pode ser copiado no cabecalho do servidor.
+- A migracao 20261119021539_server_membership.sql esta aplicada no Supabase. O servidor antigo foi removido.
+  As regras de leitura de servidores, canais e mensagens exigem propriedade ou participacao.
+  O diretorio e a sala usam Realtime privado com autorizacao por topico.
+- Shell mantem ScreenChannel montado durante a navegacao. O indicador no canto inferior esquerdo volta
+  para a call; o telefone desconecta. Entrar em outro canal de tela troca a call.
+  Cada canal de tela usa seu proprio channel_id para o chat lateral. O palco vazio tem moldura e uma
+  lista recolhivel de avatares. Sem microfone.
+- QA web no Chrome com duas contas temporarias: criacao, entrada por codigo, presenca privada de ambos
+  os papeis, mensagem da call separada de geral, retorno e desconexao. Uma track sintetica continuou
+  ativa na mesma ScreenRoom durante a navegacao. Build Vite validado.
+
 1.3.2 — protecao contra ENOENT no portatil, participantes sincronizados e amplificador de audio 300% (2026-11-18):
 - `electron/audio.cjs` verifica `existsSync(visor-audio.exe)` antes de executar ou iniciar capturas e trata eventos
   `error` no `spawn`, evitando `Uncaught Exception: spawn visor-audio.exe ENOENT` quando o Windows/antivirus remove
@@ -387,8 +401,6 @@ Proximos passos sugeridos:
 - Auto-update do desktop (electron-updater + GitHub Releases) e assinatura de codigo
 - TURN para conectividade em qualquer rede
 - SFU (Cloudflare Calls / LiveKit) se precisar de muitos espectadores em bitrate alto
-- Sair do canal de tela encerra a transmissao (ScreenRoom vive no ScreenChannel)
-- Lista de servidores mostra todos os publicos; sem busca/entrar/sair
 - Job de limpeza de usuarios anonimos sem perfil
 
 ## Regras de design (pedido do usuario)

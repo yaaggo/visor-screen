@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Hash, LogOut, Monitor, Plus, Smartphone, Trash2, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { Hash, LogOut, Monitor, Plus, LayoutGrid, PhoneOff, Radio, Smartphone, Trash2, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { deviceKind, endpointId, presencePublisher } from '../lib/presence.js'
-import { go, inviteUrl, useRoute } from '../lib/route.js'
+import { go, useRoute } from '../lib/route.js'
 import { Avatar, CopyButton, HoldButton, IconButton, Segmented, usePopover } from './ui.jsx'
+import ServerHub from './ServerHub.jsx'
 import TextChannel from './TextChannel.jsx'
 import ProfilePhoto from './ProfilePhoto.jsx'
 import ScreenChannel from './ScreenChannel.jsx'
@@ -12,7 +13,8 @@ import ScreenChannel from './ScreenChannel.jsx'
 function useLive(table, filter, order, deps) {
   const [rows, setRows] = useState(null)
   useEffect(() => {
-    if (filter === false) return setRows(null)
+    setRows(null)
+    if (filter === false) return
     let alive = true
     let q = supabase.from(table).select('*').order(order, { ascending: true })
     if (filter) q = q.eq(filter[0], filter[1])
@@ -57,6 +59,10 @@ export default function Shell({ profile }) {
   const [editing, setEditing] = useState(false)
   const [photo, setPhoto] = useState(0)
 
+  const [call, setCall] = useState(null)
+  const [connected, setConnected] = useState(false)
+  const origin = useRef(null)
+  const directoryServer = call?.server_id ?? serverId
   const directory = useRef(null)
   const member = useRef(null)
   const [visitors, setVisitors] = useState([])
@@ -70,9 +76,9 @@ export default function Shell({ profile }) {
   }, [])
   useEffect(() => {
     setVisitors([])
-    if (!serverId) return
+    if (!directoryServer) return
     let alive = true
-    const dir = supabase.channel('calls:' + serverId, { config: { presence: { key: endpointId } } })
+    const dir = supabase.channel('calls:' + directoryServer, { config: { private: true, presence: { key: endpointId } } })
     let tracked = false
     const publisher = presencePublisher(() => {
       if (dir.state !== 'joined') return
@@ -94,30 +100,64 @@ export default function Shell({ profile }) {
       }
     })
     return () => { alive = false; publisher.close(); directory.current = null; supabase.removeChannel(dir) }
-  }, [serverId, profile.id])
+  }, [directoryServer, profile.id])
 
   const server = servers?.find((s) => s.id === serverId) ?? null
-  const channel = channels?.find((c) => c.id === channelId) ?? null
+  const channel = channels?.find((c) => c.server_id === serverId && c.id === channelId) ?? null
   const isOwner = server?.owner_id === profile.id
 
-  // Rota padrao: primeiro servidor / primeiro canal
   useEffect(() => {
-    if (!servers) return
-    if (serverId && !server) return go(servers[0]?.id ?? null)
-    if (!serverId && servers.length) return go(servers[0].id)
+    if (serverId && servers && !server) go(null)
   }, [servers, serverId, server])
   useEffect(() => {
-    if (!channels || !serverId) return
-    if (!channel && channels.length) go(serverId, channels[0].id)
+    const first = channels?.find(c => c.server_id === serverId && c.kind === 'text')
+    if (!channel && first) go(serverId, first.id)
   }, [channels, channel, serverId])
-
-  const createServer = async (name) => {
-    const { data, error } = await supabase.rpc('create_server', { server_name: name })
-    if (error) return false
-    const { data: row } = await supabase.from('servers').select('*').eq('id', data).single()
-    if (row) setServers((prev) => (prev?.some((s) => s.id === row.id) ? prev : [...(prev ?? []), row]))
-    go(data)
-    return true
+  useEffect(() => {
+    if (channel?.kind === 'screen') setCall(channel)
+  }, [channel])
+  useEffect(() => {
+    if (call && servers && !servers.some(s => s.id === call.server_id)) setCall(null)
+  }, [servers, call])
+  useEffect(() => {
+    if (!call) return
+    const sub = supabase.channel('call-lifecycle:' + call.id)
+      .on('postgres_changes', {event:'DELETE', schema:'public', table:'channels'}, p => {
+        if (p.old.id === call.id) setCall(null)
+      }).subscribe()
+    return () => { supabase.removeChannel(sub) }
+  }, [call?.id])
+  useLayoutEffect(() => {
+    const item = document.querySelector('.rail-item.is-active')
+    if (!item || !origin.current) return
+    const from = origin.current
+    origin.current = null
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const to = item.getBoundingClientRect()
+    const ghost = item.cloneNode(true)
+    ghost.className = 'hub-flight'
+    ghost.setAttribute('aria-hidden','true')
+    ghost.tabIndex = -1
+    Object.assign(ghost.style, {left: to.left+'px', top: to.top+'px', width: to.width+'px', height: to.height+'px'})
+    document.body.append(ghost)
+    const flight = ghost.animate([{transform: 'translate('+ (from.x + from.width/2 - to.x - to.width/2) +'px,'+ (from.y + from.height/2 - to.y - to.height/2) +'px) scale(1.3)'}, {transform:'none'}],
+      {duration:520, easing:'cubic-bezier(.2,.8,.2,1)'})
+    flight.onfinish = () => ghost.remove()
+    return () => { flight.cancel(); ghost.remove() }
+  }, [serverId])
+  function openServer(row, node) {
+    origin.current = node.getBoundingClientRect()
+    go(row.id)
+  }
+  async function submitServer(step, value) {
+    const {data, error} = step === 'create'
+      ? await supabase.rpc('create_server', {server_name:value})
+      : await supabase.rpc('join_server', {code:value})
+    if (error) throw error
+    const {data:row, error:readError} = await supabase.from('servers').select('*').eq('id',data).single()
+    if (readError) throw readError
+    setServers(prev => prev?.some(s => s.id === row.id) ? prev : [...(prev ?? []), row])
+    return row
   }
 
   const createChannel = async (name, kind) => {
@@ -144,11 +184,20 @@ export default function Shell({ profile }) {
     await supabase.auth.signOut()
   }
 
-  const firstText = channels?.find((c) => c.kind === 'text') ?? null
+  function disconnect() {
+    if (channel?.kind === 'screen') {
+      const text = channels?.find(c => c.kind === 'text' && c.server_id === serverId)
+      go(text ? serverId : null, text?.id)
+    }
+    setCall(null)
+  }
+  const callVisible = Boolean(call && call.id === channel?.id)
+  const callLabel = call ? (connected ? 'Conectado' : 'Conectando…') : 'Desconectado'
 
   return (
-    <div className={`shell ${collapsed ? 'is-collapsed' : ''}`}>
+    <div className={`shell ${!serverId ? 'in-hub' : ''} ${collapsed ? 'is-collapsed' : ''}`}>
       <nav className="rail" aria-label="Servidores">
+        <IconButton label="Meus servidores" onClick={() => go(null)}><LayoutGrid size={18}/></IconButton>
         <PillList
           items={servers ?? []}
           activeId={serverId}
@@ -158,8 +207,13 @@ export default function Shell({ profile }) {
             </button>
           )}
         />
-        <CreateServer onCreate={createServer} />
+
         <div className="rail-foot">
+          <div className={'call-status' + (call ? ' active' : '')}>
+            <button disabled={!call} title={callLabel + (call ? ' · '+call.name : '')} aria-label={callLabel}
+              onClick={() => go(call.server_id, call.id)}><Radio size={17}/><small>{callLabel}</small></button>
+            {call && <button title="Desconectar" aria-label="Desconectar" onClick={disconnect}><PhoneOff size={15}/></button>}
+          </div>
           <button className="me" aria-label="Editar foto de perfil" data-tip={profile.username} onClick={() => setEditing(true)}>
             <Avatar id={profile.id} revision={photo} name={profile.username} size={32} />
           </button>
@@ -175,11 +229,11 @@ export default function Shell({ profile }) {
           <>
             <header className="side-head">
               <h1 title={server.name}>{server.name}</h1>
-              <CopyButton text={inviteUrl(serverId, channelId)} />
+              <CopyButton text={server.invite_code} label="Copiar código do servidor" />
             </header>
             <PillList
               className="channel-list"
-              items={channels ?? []}
+              items={channels?.filter(c => c.server_id === serverId) ?? []}
               activeId={channelId}
               render={(c) => (
                 <div key={c.id}><div data-id={c.id} className="channel-row">
@@ -197,7 +251,7 @@ export default function Shell({ profile }) {
                     <button key={v.presence_ref} className="participant" onClick={() => go(serverId,c.id)}>
                       <span className="participant-face"><Avatar id={v.profileId ?? v.id} revision={v.photo} name={v.name} size={24}/>{v.sharing && <i className="live-dot"/>}</span><span className="participant-meta"><span>{v.name}</span>{v.device === 'mobile' ? <Smartphone size={11} className="device-icon" aria-label="Celular"/> : <Monitor size={11} className="device-icon" aria-label="Computador"/>}</span>
                     </button>)}</div>}
-                  {c.id === channelId && c.kind === 'screen' && <div id="active-channel-roster" />}
+
                 </div>
               )}
             />
@@ -228,13 +282,12 @@ export default function Shell({ profile }) {
           )}
         </header>
         <div className="main-body">
-          {!servers ? null : !servers.length ? (
-            <EmptyState onCreate={createServer} />
-          ) : channel?.kind === 'text' ? (
-            <TextChannel key={channel.id} channel={channel} profile={profile} />
-          ) : channel?.kind === 'screen' ? (
-            <ScreenChannel reportMember={reportMember} visitors={visitors.filter(v => v.channel === channel.id)} photo={photo} key={channel.id} channel={channel} profile={profile} chatChannel={firstText} />
-          ) : null}
+          {!serverId && servers && <ServerHub servers={servers} onSubmit={submitServer} onOpen={openServer}/>}
+          {channel?.kind === 'text' && <TextChannel key={channel.id} channel={channel} profile={profile} />}
+          {call && <div className="call-session" hidden={!callVisible}>
+            <ScreenChannel key={call.id} channel={call} profile={profile} chatChannel={call} visible={callVisible}
+              onConnection={setConnected} reportMember={reportMember} visitors={visitors.filter(v => v.channel === call.id)} photo={photo}/>
+          </div>}
         </div>
       </main>
     </div>
@@ -286,24 +339,6 @@ function NameForm({ placeholder, onSubmit, max, children, extra }) {
   )
 }
 
-function CreateServer({ onCreate }) {
-  const pop = usePopover()
-  return (
-    <div className="pop-anchor" ref={pop.ref}>
-      <IconButton label="Novo servidor" active={pop.open} className="rail-add" onClick={() => pop.setOpen((v) => !v)}>
-        <Plus size={18} strokeWidth={1.75} className="plus" />
-      </IconButton>
-      <div className={`popover pop-right ${pop.open ? 'is-open' : ''}`}>
-        {pop.open && (
-          <NameForm placeholder="servidor" max={32} onSubmit={async (v) => (await onCreate(v)) && (pop.setOpen(false), true)}>
-            <Plus size={15} />
-          </NameForm>
-        )}
-      </div>
-    </div>
-  )
-}
-
 function CreateChannel({ onCreate }) {
   const pop = usePopover()
   const [kind, setKind] = useState('text')
@@ -335,19 +370,6 @@ function CreateChannel({ onCreate }) {
           </NameForm>
         )}
       </div>
-    </div>
-  )
-}
-
-function EmptyState({ onCreate }) {
-  return (
-    <div className="empty">
-      <div className="empty-mark" aria-hidden>
-        <Monitor size={28} strokeWidth={1.25} />
-      </div>
-      <NameForm placeholder="nome do servidor" max={32} onSubmit={onCreate}>
-        <Plus size={15} />
-      </NameForm>
     </div>
   )
 }

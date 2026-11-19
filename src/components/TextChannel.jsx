@@ -105,7 +105,7 @@ export default function TextChannel({ channel, profile, compact = false }) {
         })}
       </div>
       <form className="composer" onSubmit={send}>
-        <input value={draft} maxLength={1000} placeholder={`#${channel.name}`} onChange={(e) => setDraft(e.target.value)} />
+        <input value={draft} maxLength={1000} placeholder={compact ? 'Mensagem na call' : `#${channel.name}`} onChange={(e) => setDraft(e.target.value)} />
         <button className={`send ${draft.trim() ? 'is-ready' : ''}`} disabled={!draft.trim()} aria-label="Enviar">
           <ArrowUp size={16} strokeWidth={2} />
         </button>

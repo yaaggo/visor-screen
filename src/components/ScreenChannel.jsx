@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Activity, Eye, Maximize, MessageSquare, Minimize, Monitor, MonitorUp, Smartphone, Square, Volume2, VolumeX, X } from 'lucide-react'
+import { Activity, ChevronRight, Eye, Maximize, MessageSquare, Minimize, Monitor, MonitorUp, Smartphone, Square, Volume2, VolumeX, X } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { deviceKind, endpointId } from '../lib/presence.js'
 import { ScreenRoom } from '../lib/screen.js'
@@ -41,16 +41,16 @@ function useAudioApps(enabled) {
   return apps
 }
 
-export default function ScreenChannel({ channel, profile, chatChannel, visitors = [], photo, reportMember }) {
+export default function ScreenChannel({ channel, profile, chatChannel, visitors = [], photo, reportMember, visible = true, onConnection }) {
   const roomRef = useRef(null)
   const captureRef = useRef(null)
   const starting = useRef(false)
   const [s, setS] = useState({ peers: [], sharing: false, local: null, remote: null, watching: null, viewers: 0, preset: '1080p60', bitrate: 0, uplink: null, stats: null, remoteAudio: false })
-  const [rosterNode, setRosterNode] = useState(null)
-
+  const [peopleOpen, setPeopleOpen] = useState(true)
+  useEffect(() => { onConnection?.(Boolean(s.connected)) }, [s.connected, onConnection])
   useEffect(() => {
-    setRosterNode(document.getElementById('active-channel-roster'))
-  })
+    if (!visible) { setHover(null); setMenu(null) }
+  }, [visible])
   const [hover, setHover] = useState(null)
   const hoverTimer = useRef(null)
   const [menu, setMenu] = useState(null)
@@ -186,7 +186,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
   const person = (p, compact) => {
     const own = p.id === endpointId
     const active = tiles.some(tile => tile.id === p.id)
-    return <button key={p.id} className={'participant' + (p.sharing ? ' live' : '')} aria-label={p.name}
+    return <button key={p.id} className={'participant' + (p.sharing ? ' live' : '')} aria-label={p.name} title={p.name}
       aria-pressed={p.sharing ? active : undefined}
       onMouseEnter={e => {
         clearTimeout(hoverTimer.current)
@@ -201,7 +201,9 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
         setHover(null)
         setMenu({ id:p.id, peer:p, x:Math.min(innerWidth-160,e.clientX), y:Math.min(innerHeight-48,e.clientY) })
       }}>
-      <span className="participant-face"><Avatar id={p.profileId ?? p.id} revision={own ? photo : p.photo} name={p.name} size={compact ? 24 : 60}/>{p.sharing && <i className="live-dot"/>}</span>
+      <span className="participant-face"><Avatar id={p.profileId ?? p.id} revision={own ? photo : p.photo} name={p.name} size={compact ? 38 : 60}/>
+        <span className="person-device">{(own ? deviceKind : p.device) === 'mobile' ? <Smartphone size={9} aria-label="Celular"/> : <Monitor size={9} aria-label="Computador"/>}</span>
+        {p.sharing && <i className="live-dot"/>}</span>
       <span className="participant-meta"><span>{p.name}</span>{(own ? deviceKind : p.device) === 'mobile' ? <Smartphone size={11} className="device-icon" aria-label="Celular"/> : <Monitor size={11} className="device-icon" aria-label="Computador"/>}</span>{compact && !!p.watching?.length && <Eye size={12} aria-label="Assistindo"/>}
     </button>
   }
@@ -223,7 +225,6 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
 
   return (
     <div className={`screen ${chat && chatChannel ? 'with-chat' : ''}`}>
-      {rosterNode && createPortal(<div className="channel-people">{allPeers.map(p => person(p,true))}</div>, rosterNode)}
       {hoverPeer && createPortal(<button className="stream-hover" onMouseEnter={() => clearTimeout(hoverTimer.current)} onMouseLeave={hidePreview} onClick={() => { if (hoverPeer.id !== endpointId) roomRef.current.watch(hoverPeer.id, false, hoverPeer); setHover(null) }} style={{left:hover.left, top:hover.top}}>
         <video autoPlay muted playsInline ref={node => { if (node && node.srcObject !== preview) node.srcObject = preview ?? null }}/>
         <small>{hoverPeer.name}</small>
@@ -236,9 +237,13 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
             sendStats={s.sendStats} captureEngine={s.captureEngine} captureStats={s.captureStats}
             hasAudio={tile.id !== endpointId && !!tile.stream?.getAudioTracks().length}
             watchingName={allPeers.find(p => p.id === tile.id)?.name}/>)}
-        </div> : <div className="call-lobby">{allPeers.map(p => person(p,false))}</div>}
+        </div> : <div className="idle-frame" aria-label="Sem transmissão" />}
 
-        {tiles.length > 0 && <div className="call-strip">{allPeers.map(p => person(p,true))}</div>}
+        <aside className={'people-drawer' + (peopleOpen ? ' is-open' : '')} aria-label="Participantes">
+          <button className="people-toggle" aria-label={peopleOpen ? 'Ocultar participantes' : 'Mostrar participantes'}
+            aria-expanded={peopleOpen} onClick={() => setPeopleOpen(!peopleOpen)}><ChevronRight size={15}/></button>
+          <div className="people-track" inert={!peopleOpen}>{allPeers.map(p => person(p,true))}</div>
+        </aside>
         <Island
           s={s}
           cfg={cfg}
