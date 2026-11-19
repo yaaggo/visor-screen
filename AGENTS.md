@@ -262,6 +262,13 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
   de bloco grande) e quebrou a web por ~10 min (cada clique abria uma captura nova). Restaurado no commit seguinte.
   Teste com contas reais: presenca nas duas salas, rajada de 20 tracks, sinal entregue, canal fechado reaberto.
 - TURN continua desligado (`/api/turn` so devolve STUN). Redes com CGNAT dos dois lados ainda podem falhar.
+- Diagnostico de rede real (2026-11-19, mesmo provedor nos dois lados): o yago esta atras de CGNAT (saltos 172.29.x
+  apos o roteador ZTE) e estava com IPv6 DESLIGADO no Windows (so Teredo 2001::). Com o Haroldo (IPv6 nativo), ICE
+  ficava em `checking`: 8 envios por par e 0 respostas. Ativar `ms_tcpip6` no Wi-Fi deu IPv6 nativo e a transmissao
+  passou a funcionar. Celular em dados moveis assistindo o PC funcionou sem TURN.
+  Para diagnosticar: abrir o Visor com `--remote-debugging-port=9333`, achar o ScreenRoom pela fibra React a partir de
+  `.share-btn` e ler `getStats()` dos `candidate-pair` (requestsSent/responsesReceived). Antes de mexer em TURN, peca
+  aos dois lados para conferir IPv6 (test-ipv6.com / Protocolo IP Versao 6 nas propriedades do adaptador).
 
 1.7.1 — animacoes e atualizacao em segundo plano (2026-11-19):
 - Onda de choque: escala e opacidade em animacoes separadas (uma curva de crescimento e fade longo),
