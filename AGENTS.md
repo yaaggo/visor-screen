@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-19, versao 1.7.1 (animacoes suaves, atualizacao em segundo plano).
+Ultima atualizacao: 2026-11-19, versao 1.7.2 (sala se recupera do limite de presenca).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -242,6 +242,18 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.7.2 — sala que se recupera do limite de presenca (2026-11-19):
+- Primeira partida real entre redes (Juazeiro/Petrolina): o transmissor sumiu da sala. O Supabase registrou
+  `ClientPresenceRateLimitReached` para a conta dele e FECHOU o canal da sala; o app nao reabria, entao o
+  diretorio mostrava "transmitindo" mas nenhum pedido de video chegava. Nao era NAT/TURN.
+- `presencePublisher` agrupa rajadas (250 ms), ignora estado identico ao confirmado, limita a 5 tracks/10 s,
+  repete apos falha e confere a propria presenca a cada 10 s. `ScreenRoom` reabre o canal (CLOSED/CHANNEL_ERROR
+  e watchdog de 5 s, backoff ate 15 s); o diretorio em Shell tambem reassina.
+- Incidente: o primeiro commit da correcao apagou send/onPresence/onSignal/startShare do ScreenRoom (substituicao
+  de bloco grande) e quebrou a web por ~10 min (cada clique abria uma captura nova). Restaurado no commit seguinte.
+  Teste com contas reais: presenca nas duas salas, rajada de 20 tracks, sinal entregue, canal fechado reaberto.
+- TURN continua desligado (`/api/turn` so devolve STUN). Redes com CGNAT dos dois lados ainda podem falhar.
 
 1.7.1 — animacoes e atualizacao em segundo plano (2026-11-19):
 - Onda de choque: escala e opacidade em animacoes separadas (uma curva de crescimento e fade longo),
