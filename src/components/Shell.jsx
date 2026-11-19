@@ -99,6 +99,7 @@ export default function Shell({ profile }) {
   const directory = useRef(null)
   const member = useRef(null)
   const [visitors, setVisitors] = useState([])
+  const [directoryRetry, setDirectoryRetry] = useState(0)
   const reportMember = useCallback(value => {
     member.current = value
     // Effects can replace a status during the same React commit.
@@ -113,27 +114,34 @@ export default function Shell({ profile }) {
     let alive = true
     const dir = supabase.channel('calls:' + directoryServer, { config: { private: true, presence: { key: endpointId } } })
     let tracked = false
+    const payload = () => member.current && { ...member.current, endpointId, profileId: profile.id, device: member.current.device ?? deviceKind }
     const publisher = presencePublisher(() => {
       if (dir.state !== 'joined') return
       if (member.current) {
         tracked = true
-        return dir.track({ ...member.current, endpointId, profileId: profile.id, device: member.current.device ?? deviceKind })
+        return dir.track(payload())
       }
       if (tracked) return dir.untrack().then(status => {
         if (status === 'ok' && !member.current) tracked = false
         return status
       })
+    }, {
+      snapshot: () => JSON.stringify(payload() ?? null),
+      present: () => dir.state !== 'joined' ? null : member.current ? endpointId in dir.presenceState() : !tracked,
     })
     dir.on('presence', { event: 'sync' }, () => {
       if (alive) setVisitors(Object.entries(dir.presenceState()).flatMap(([id, entries]) => entries.map(meta => ({ ...meta, id }))))
     }).subscribe(status => {
-      if (alive && status === 'SUBSCRIBED') {
+      if (!alive) return
+      if (status === 'SUBSCRIBED') {
         directory.current = publisher
-        publisher.refresh()
+        publisher.reset()
       }
+      // Canal fechado pelo servidor (ex.: limite de presenca): recria a assinatura.
+      if (status === 'CLOSED' || status === 'CHANNEL_ERROR') setTimeout(() => alive && setDirectoryRetry(n => n + 1), 3000)
     })
     return () => { alive = false; publisher.close(); directory.current = null; supabase.removeChannel(dir) }
-  }, [directoryServer, profile.id])
+  }, [directoryServer, profile.id, directoryRetry])
 
   const [browsingVisitors, setBrowsingVisitors] = useState([])
   useEffect(() => {
