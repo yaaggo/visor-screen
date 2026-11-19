@@ -19,7 +19,7 @@ function spring(k, damping) {
 }
 const springs = { '--fan':spring(220,18), '--lift':spring(420,20), '--scale':spring(420,22), '--settle':spring(280,22) }
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches
-const pageSize = 4
+const serversPerPage = 3
 
 function Face({server}) {
   return <>
@@ -30,7 +30,7 @@ function Face({server}) {
 
 export default function ServerHub({ servers, returningId, onOpen, onSubmit, editProfile, logout }) {
   const account = usePopover()
-  const [page, setPage] = useState(() => Math.max(0, Math.floor(servers.findIndex(s => s.id === returningId)/pageSize)))
+  const [page, setPage] = useState(() => Math.max(0, Math.floor(servers.findIndex(s => s.id === returningId)/serversPerPage)))
   const [step,setStep] = useState('idle')
   const [draw,setDraw] = useState(null)
   const [selected,setSelected] = useState(null)
@@ -44,9 +44,9 @@ export default function ServerHub({ servers, returningId, onOpen, onSubmit, edit
   const skipClick = useRef(false)
   const form = useRef(null)
   const deck = draw?.servers ?? servers
-  const lastPage = Math.floor(deck.length/pageSize)
+  const lastPage = Math.max(0, Math.ceil(deck.length / serversPerPage) - 1)
   const activePage = Math.min(page,lastPage)
-  const cards = [...deck,null].slice(activePage*pageSize,(activePage+1)*pageSize)
+  const cards = [...deck.slice(activePage * serversPerPage, (activePage + 1) * serversPerPage), null]
   function clearGesture() {
     const g = gesture.current
     if (g) {
@@ -212,7 +212,7 @@ export default function ServerHub({ servers, returningId, onOpen, onSubmit, edit
     </div>
     <div className="deck-hand" inert={step!=='idle'} style={{'--gaps':Math.max(1,cards.length-1)}}>
       {cards.map((server,i)=><button key={server?.id ?? 'add'} data-server={server?.id} aria-label={server?.name ?? 'Adicionar servidor'}
-        className={'deck-card'+(server?'':' deck-add')} data-drawn={draw && draw.id===(server?.id ?? null) ? true : undefined} style={{'--d':i-(cards.length-1)/2,'--abs':Math.abs(i-(cards.length-1)/2),'--z':i+1}}
+        className={'deck-card'+(server?'':' deck-add')} data-drawn={draw && draw.id===(server?.id ?? null) ? true : undefined} style={{'--d':i-(cards.length-1)/2,'--abs':Math.abs(i-(cards.length-1)/2),'--z':server ? i+1 : 0}}
         onPointerDown={e=>begin(e,server)}
         onLostPointerCapture={e=>release(e,server,true)} onClick={e=>{
           if(skipClick.current && e.detail!==0){skipClick.current=false;return}

@@ -7,7 +7,8 @@
   z-index:var(--z); transform-origin:center bottom; translate:calc(var(--d)*min(29px,var(--spread))) 0;
   rotate:calc(var(--d)*3deg); transition:translate 1s var(--fan),rotate 1s var(--fan),scale 1s var(--scale),transform 1s var(--lift) }
 .deck-hand:hover .deck-card,.deck-hand:focus-within .deck-card { translate:calc(var(--d)*var(--spread)) calc(var(--abs)*12px); rotate:calc(var(--d)*12deg) }
-.deck-card:hover,.deck-card:focus-visible { z-index:8; transform:translateY(-22px); scale:1.06 }
+.deck-card:hover,.deck-card:focus-visible { transform:translateY(-22px); scale:1.06 }
+.deck-card[data-server]:is(:hover,:focus-visible) { z-index:8 }
 .deck-card:active { cursor:grabbing }
 .deck-art { flex:1; min-height:0; width:100%; display:grid; place-items:center; overflow:hidden; border-radius:var(--r-md);
   font-weight:650; font-size:clamp(24px,4vh,38px); letter-spacing:-.055em; text-transform:uppercase;

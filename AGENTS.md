@@ -243,6 +243,9 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 
 ## Estado atual
 
+1.6.2 — no leque, as cartas dos servidores ficam acima da carta +, inclusive
+ao focar o +. Cada pagina agrupa ate tres servidores e a carta de adicionar.
+
 1.6.1 — a carta fica fora da mao ate concluir a entrada. A carta de adicionar
 se transforma no seletor central e so recolhe ao cancelar. A onda de entrada
 e uma iluminacao radial em duas camadas atras das cartas, ate as bordas.
