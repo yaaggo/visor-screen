@@ -51,6 +51,37 @@ function useLive(table, filter, order, deps) {
   return [rows, setRows]
 }
 
+// Carta do centro do deck vira a capa do servidor na lateral: a moldura encolhe
+// (geometria real, sem distorcer o raio) enquanto a carta some e a capa aparece.
+function coverFlight(move, item) {
+  const sidebar = item.closest('.sidebar')
+  // A lateral entra deslizando; mede o destino sem esse deslocamento para nao saltar no fim.
+  if (sidebar) sidebar.style.animation = 'none'
+  const to = item.getBoundingClientRect()
+  if (sidebar) { void sidebar.offsetWidth; sidebar.style.animation = '' }
+  const from = move.rect
+  const flight = document.createElement('div')
+  flight.className = 'cover-flight'
+  flight.inert = true
+  const card = move.card
+  card.classList.add('cover-flight-card')
+  const face = item.cloneNode(true)
+  face.removeAttribute('data-tip')
+  face.className = 'cover-flight-face'
+  flight.append(card, face)
+  document.body.append(flight)
+  item.style.visibility = 'hidden'
+  const box = (r, radius) => ({ left:r.left+'px', top:r.top+'px', width:r.width+'px', height:r.height+'px', borderRadius:radius })
+  const ease = 'cubic-bezier(.32,.72,0,1)'
+  const shape = flight.animate([box(from, move.radius), box(to, getComputedStyle(item).borderRadius)],
+    { duration:620, easing:ease, fill:'forwards' })
+  card.animate([{ opacity:1, filter:'blur(0)' }, { opacity:0, filter:'blur(2px)' }], { duration:330, easing:'cubic-bezier(.4,0,.6,1)', fill:'forwards' })
+  face.animate([{ opacity:0, scale:1.08 }, { opacity:1, scale:1 }], { duration:420, delay:140, easing:'cubic-bezier(.22,1,.36,1)', fill:'forwards' })
+  const restore = () => { flight.remove(); item.style.visibility = '' }
+  shape.onfinish = restore
+  return () => { shape.cancel(); restore() }
+}
+
 export default function Shell({ profile }) {
   const { serverId, channelId } = useRoute()
   const [servers, setServers] = useLive('servers', null, 'created_at', [])
@@ -158,6 +189,7 @@ export default function Shell({ profile }) {
     const item = serverId ? document.querySelector('.rail-item.is-active')
       : document.querySelector(`[data-server="${CSS.escape(move.id)}"]`)
     if (!item || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    if (serverId && move.card) return coverFlight(move, item)
     item.scrollIntoView({ block:'nearest', inline:'nearest' })
     const to = item.getBoundingClientRect()
     const from = move.rect
@@ -185,7 +217,9 @@ export default function Shell({ profile }) {
   }, [serverId])
   function openServer(row, node) {
     const previous = document.querySelector('.rail-item.is-active')
-    origin.current = { id:row.id, rect:(previous ?? node).getBoundingClientRect() }
+    const card = !previous && node?.classList.contains('deck-center') ? node.cloneNode(true) : null
+    origin.current = { id:row.id, rect:(previous ?? node).getBoundingClientRect(), card,
+      radius:card ? getComputedStyle(node).borderRadius : null }
     const next = row.id === serverId ? null : row.id
     go(next, next && call?.server_id === next ? call.id : null)
   }

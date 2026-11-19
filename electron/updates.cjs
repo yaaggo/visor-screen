@@ -53,26 +53,52 @@ async function download(info, auth, progress) {
   }
 }
 function registerUpdates(app, ipcMain, getWindow) {
-  let pending = false
+  // ready: instalador baixado e verificado; job: download em segundo plano em andamento
+  let ready = null, job = null, installing = false
   function trusted(event) {
     const contents = getWindow()?.webContents
     return app.isPackaged && process.platform==='win32' && contents===event.sender &&
       event.senderFrame===contents.mainFrame && contents.getURL().startsWith('file:')
   }
-  ipcMain.handle('update:check',async (event,auth) => trusted(event) ? (await latest(app.getVersion(),auth))?.version ?? null : null)
+  function prepare(info, auth) {
+    if (ready?.version===info.version) return Promise.resolve(ready)
+    if (job?.version===info.version) return job.promise
+    const promise = download(info,auth,n=>getWindow()?.webContents.send('update:progress',n))
+      .then(file => {
+        if (ready) rm(path.dirname(ready.file),{recursive:true,force:true}).catch(()=>{})
+        ready = {version:info.version,file}
+        getWindow()?.webContents.send('update:ready',info.version)
+        return ready
+      })
+      .finally(() => { if (job?.promise===promise) job = null })
+    job = {version:info.version,promise}
+    return promise
+  }
+  ipcMain.handle('update:check',async (event,auth) => {
+    if (!trusted(event)) return null
+    const info = await latest(app.getVersion(),auth)
+    if (!info) return null
+    if (ready?.version===info.version) return {version:info.version,ready:true}
+    prepare(info,auth).catch(()=>{})
+    return {version:info.version,ready:false}
+  })
   ipcMain.handle('update:install',async (event,auth) => {
-    if (!trusted(event) || pending) return false
-    pending = true
+    if (!trusted(event) || installing) return false
+    installing = true
     try {
-      const info = await latest(app.getVersion(),auth)
-      if (!info) return false
-      const target = await download(info,auth,n=>getWindow()?.webContents.send('update:progress',n))
-      const child = spawn(target,['/S','--force-run'],{detached:true,stdio:'ignore',windowsHide:true})
+      let target = ready
+      if (!target) {
+        const info = await latest(app.getVersion(),auth)
+        if (!info) return false
+        target = await prepare(info,auth)
+      }
+      // --force-run reabre o Visor assim que o instalador silencioso termina
+      const child = spawn(target.file,['/S','--force-run'],{detached:true,stdio:'ignore',windowsHide:true})
       await new Promise((resolve,reject)=>{child.once('spawn',resolve);child.once('error',reject)})
       child.unref()
       setImmediate(()=>app.quit())
       return true
-    } finally { pending=false }
+    } finally { installing = false }
   })
 }
 module.exports = {registerUpdates,latest,download}

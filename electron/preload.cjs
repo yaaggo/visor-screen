@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('visor', {
   checkUpdate: auth => ipcRenderer.invoke('update:check', auth),
   installUpdate: auth => ipcRenderer.invoke('update:install', auth),
   onUpdateProgress: callback => subscribe('update:progress',callback),
+  onUpdateReady: callback => subscribe('update:ready',callback),
   platform: process.platform,
   sources: () => ipcRenderer.invoke('sources'),
   audioApps: () => ipcRenderer.invoke('audio:apps'),

@@ -66,7 +66,7 @@ export default function ServerHub({ servers, ownerId, onDelete, returningId, onO
     if (step === 'join' || step === 'create') form.current?.querySelector('input')?.focus()
     if (step === 'arrived') {
       timer.current = setTimeout(() => {
-        if (center.current) onOpen(selected,center.current.querySelector('.deck-art'))
+        if (center.current) onOpen(selected,center.current)
       },reduced() ? 0 : 820)
       return () => clearTimeout(timer.current)
     }
@@ -153,11 +153,13 @@ export default function ServerHub({ servers, ownerId, onDelete, returningId, onO
       const inside = e.clientX>=bin.left && e.clientX<=bin.right && e.clientY>=bin.top && e.clientY<=bin.bottom
       if (inside && !g.trashTimer) {
         trash.current.classList.add('arming')
+        g.copy?.classList.add('arming')
         g.trashTimer = setTimeout(()=>discard(g),1500)
       } else if (!inside && g.trashTimer) {
         clearTimeout(g.trashTimer)
         g.trashTimer = null
         trash.current.classList.remove('arming')
+        g.copy?.classList.remove('arming')
       }
       if (inside) g.near=false
     }

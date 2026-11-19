@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-19, versao 1.7.0 (atualizador, lateral nova, lixeira do deck).
+Ultima atualizacao: 2026-11-19, versao 1.7.1 (animacoes suaves, atualizacao em segundo plano).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -242,6 +242,16 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.7.1 — animacoes e atualizacao em segundo plano (2026-11-19):
+- Onda de choque: escala e opacidade em animacoes separadas (uma curva de crescimento e fade longo),
+  zerando antes de abrir o servidor. Antes cada etapa reiniciava a curva e o fim era cortado.
+- Carta do centro -> capa da lateral (`coverFlight` em Shell.jsx): a moldura anima geometria real
+  (left/top/width/height/raio) enquanto a carta some e a capa aparece. O destino e medido sem a entrada
+  deslizante da lateral, e a capa nao usa mais a animacao `pop` (era o salto/resize brusco no fim).
+- Lixeira: uma camada clara sobe pela carta durante os 1,5 s sobre a lixeira.
+- Atualizador: ao achar versao nova, o main baixa e verifica o instalador em segundo plano; o icone so
+  aparece quando esta pronto. O clique roda `/S --force-run`, fecha e o instalador reabre o Visor.
 
 1.7.0 — atualizacao automatica, lateral nova e lixeira do deck (2026-11-19):
 - Desktop empacotado consulta `desktop-updates/latest.json` (bucket privado do Supabase, leitura para

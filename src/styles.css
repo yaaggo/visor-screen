@@ -2257,3 +2257,10 @@ button:disabled {
 .account-foot .call-status,.account-foot .call-status button:first-child {display:flex;align-items:center;gap:6px;width:auto}
 .desktop-update {position:fixed;right:148px;top:9px;z-index:100;display:grid;place-items:center;width:32px;height:32px;background:var(--raised);border:1px solid var(--line-strong);border-radius:10px;-webkit-app-region:no-drag}
 @media(max-width:860px){.shell {grid-template-columns:0 minmax(0,1fr)} .shell.is-collapsed {grid-template-columns:min(220px,60vw) minmax(0,1fr)}}
+.desktop-update {color:var(--text);transition:background .2s,border-color .2s;animation:update-in .6s var(--spring) both}
+.desktop-update:hover {background:var(--hover);border-color:#fff5}
+.desktop-update:disabled {opacity:.7}
+@keyframes update-in {from{opacity:0;scale:.6;filter:blur(3px)} to{opacity:1;scale:1;filter:none}}
+@media(prefers-reduced-motion:reduce){.desktop-update{animation:none}}
+.desktop-update .spin {animation:spin .9s linear infinite}
+.server-header .server-cover {animation:none} /* a entrada da capa e o voo da carta (coverFlight) */

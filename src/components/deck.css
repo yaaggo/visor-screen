@@ -40,14 +40,19 @@
 .deck-wave::before,.deck-wave::after {
   content:""; position:absolute; left:50%; top:50%; width:150vmax; height:150vmax; border-radius:50%;
   background:radial-gradient(closest-side,transparent 8%,rgb(203 212 220 / .045) 29%,rgb(239 242 245 / .24) 57%,rgb(180 186 194 / .10) 76%,transparent 100%);
-  animation:deck-swell 800ms cubic-bezier(.18,.65,.3,1) both
+  /* escala e opacidade separadas: uma unica curva de crescimento e um fade longo, sem quinas entre etapas */
+  animation:deck-swell 790ms cubic-bezier(.16,1,.3,1) both, deck-glow 790ms linear both;
+  will-change:transform,opacity
 }
-.deck-wave::after { animation-delay:90ms; animation-duration:710ms; background:radial-gradient(closest-side,#fff2,transparent 72%) }
+.deck-wave::after { animation-delay:60ms; animation-duration:720ms; background:radial-gradient(closest-side,#fff2,transparent 72%) }
 @keyframes deck-swell {
-  0% { transform:translate(-50%,-50%) scale(.035); opacity:0 }
-  16% { opacity:1 }
-  70% { opacity:.84 }
-  100% { transform:translate(-50%,-50%) scale(1.45); opacity:0 }
+  from { transform:translate(-50%,-50%) scale(.035) }
+  to { transform:translate(-50%,-50%) scale(1.5) }
+}
+@keyframes deck-glow {
+  0% { opacity:0; animation-timing-function:cubic-bezier(.3,0,.2,1) }
+  14% { opacity:1; animation-timing-function:cubic-bezier(.4,0,.2,1) }
+  100% { opacity:0 }
 }
 .deck-center:is(.step-choose,.step-create,.step-join)::before {
   content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
@@ -75,3 +80,16 @@
 .deck-trash.arming::before { content:""; position:absolute; inset:0; background:#ffffff25; transform-origin:bottom; animation:trash-fill 1.5s linear both }
 @keyframes trash-fill { from {transform:scaleY(0)} to {transform:scaleY(1)} }
 .deck-notice { position:absolute; bottom:35%; color:var(--muted) }
+.cover-flight { position:fixed; z-index:1000; pointer-events:none; overflow:hidden; border:1px solid #ffffff38;
+  background:linear-gradient(150deg,#303030,#131313 78%); box-shadow:0 10px 30px #0007; will-change:left,top,width,height }
+.cover-flight-card { position:absolute!important; inset:0!important; width:100%!important; height:100%!important; translate:none!important;
+  border:0!important; box-shadow:none!important; background:transparent!important; transition:none!important; animation:none!important }
+.cover-flight-face { position:absolute; inset:0; display:grid; place-items:center; overflow:hidden; border-radius:inherit; opacity:0;
+  color:var(--text); font-weight:650; background:linear-gradient(145deg,#373737,#171717) }
+.cover-flight-face img { width:100%; height:100%; object-fit:cover }
+/* Tempo ate apagar: uma camada clara sobe pela carta durante os 1,5 s sobre a lixeira */
+.deck-copy .deck-facsimile::after { content:""; position:absolute; inset:-1px; border-radius:inherit; pointer-events:none; opacity:0;
+  background:linear-gradient(0deg,#ffffff5c,#ffffff26 70%,#ffffff40); box-shadow:inset 0 2px 0 #fff9;
+  clip-path:inset(100% 0 0 0 round var(--r-lg)); transition:opacity .18s }
+.deck-copy.arming .deck-facsimile::after { opacity:1; animation:card-fill 1.5s linear both }
+@keyframes card-fill { from { clip-path:inset(100% 0 0 0 round var(--r-lg)) } to { clip-path:inset(0 0 0 0 round var(--r-lg)) } }
