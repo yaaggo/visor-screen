@@ -161,7 +161,7 @@ export default function Shell({ profile }) {
     const to = item.getBoundingClientRect()
     const from = move.rect
     const ghost = item.cloneNode(true)
-    ghost.className = 'server-flight'
+    ghost.className = serverId ? 'server-flight' : 'server-flight deck-return'
     ghost.removeAttribute('data-tip')
     ghost.inert = true
     Object.assign(ghost.style, { left:to.left+'px', top:to.top+'px', width:to.width+'px', height:to.height+'px',
@@ -170,8 +170,14 @@ export default function Shell({ profile }) {
     const dx = from.x + from.width/2 - to.x - to.width/2
     const dy = from.y + from.height/2 - to.y - to.height/2
     item.style.visibility = 'hidden'
-    const flight = ghost.animate([{ transform:`translate(${dx}px,${dy}px) scale(${from.width/to.width})` }, { transform:'none' }],
-      { duration:580, easing:'cubic-bezier(.23,.78,.2,1)' })
+    const frames = [{ transform:`translate(${dx}px,${dy}px) scale(${from.width/to.width})` }]
+    if (!serverId) {
+      const cx = innerWidth/2 - to.x - to.width/2
+      const cy = innerHeight/2 - to.y - to.height/2
+      frames.push({ transform:`translate(${cx}px,${cy}px) scale(.55)`, offset:.55 })
+    }
+    frames.push({ transform:'none' })
+    const flight = ghost.animate(frames, {duration:serverId ? 490 : 730, easing:'cubic-bezier(.23,.78,.2,1)'})
     const restore = () => { ghost.remove(); item.style.visibility = '' }
     flight.onfinish = restore
     return () => { flight.cancel(); restore() }
@@ -306,7 +312,7 @@ export default function Shell({ profile }) {
           )}
         </header>}
         <div className="main-body">
-          {!serverId && servers && <ServerHub servers={servers} onSubmit={submitServer} onOpen={openServer} editProfile={() => setEditing(true)} logout={logout}/>}
+          {!serverId && servers && <ServerHub returningId={origin.current?.id} servers={servers} onSubmit={submitServer} onOpen={openServer} editProfile={() => setEditing(true)} logout={logout}/>}
           {server && !channel && <div className="channel-landing">{channels?.filter(c => c.kind === 'screen' && c.server_id === serverId).map(c =>
             <button key={c.id} onClick={() => go(serverId,c.id)}><Cast size={22}/>{c.name}</button>)}</div>}
           {call && <div className="call-session" hidden={!callVisible}>

@@ -243,6 +243,14 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 
 ## Estado atual
 
+1.6.0 — deck de servidores (2026-11-19). ServerHub usa cartas em leque na base da tela,
+com as molas de abertura, elevacao e escala do Fan Cards (220/18, 420/20, 420/22).
+Clique ou arraste ao centro para entrar; fora do alvo, a carta volta para o deck.
+A carta + abre Criar/Entrar. O RPC de entrada aceita nome exato sem diferenciar maiusculas
+ou codigo de convite. Nomes duplicados exigem o codigo. O icone ativo retorna pelo centro.
+QA Electron com gestos de ponteiro, clique, cancelamento, criacao e retorno; RPC verificado
+em transacao revertida para nome, convite e nome duplicado.
+
 1.5.1 — a lateral mostra nome e foto abaixo de cada canal, inclusive o canal selecionado.
 A propria sessao entra imediatamente pelo estado da call; o diretorio fornece os demais
 participantes por instancia e nao duplica a pessoa local quando chega a confirmacao.

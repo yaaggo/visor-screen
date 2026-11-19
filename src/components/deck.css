@@ -1,0 +1,47 @@
+.deck-hub { --cw:clamp(106px,17vh,158px); --ch:calc(var(--cw)*1.31); position:relative; overflow:hidden; padding:0; isolation:isolate }
+.deck-hand { position:absolute; bottom:clamp(46px,7vh,76px); left:50%; width:0; height:var(--ch); z-index:2; --spread:min(78px,calc((100vw - var(--cw) - 40px)/var(--gaps))) }
+.deck-card,.deck-center { width:var(--cw); height:var(--ch); border:1px solid #ffffff38; border-radius:var(--r-lg);
+  color:var(--text); background:linear-gradient(150deg,#303030,#131313 78%); padding:9px;
+  display:flex; flex-direction:column; gap:8px; box-shadow:0 8px 24px #0006 }
+.deck-card { position:absolute; top:0; left:calc(var(--cw)*-.5); user-select:none; touch-action:none; cursor:grab;
+  z-index:var(--z); transform-origin:center bottom; translate:calc(var(--d)*min(29px,var(--spread))) 0;
+  rotate:calc(var(--d)*3deg); transition:translate 1s var(--fan),rotate 1s var(--fan),scale 1s var(--scale),transform 1s var(--lift) }
+.deck-hand:hover .deck-card,.deck-hand:focus-within .deck-card { translate:calc(var(--d)*var(--spread)) calc(var(--abs)*12px); rotate:calc(var(--d)*12deg) }
+.deck-card:hover,.deck-card:focus-visible { z-index:8; transform:translateY(-22px); scale:1.06 }
+.deck-card:active { cursor:grabbing }
+.deck-art { flex:1; min-height:0; width:100%; display:grid; place-items:center; overflow:hidden; border-radius:var(--r-md);
+  font-weight:650; font-size:clamp(24px,4vh,38px); letter-spacing:-.055em; text-transform:uppercase;
+  background:radial-gradient(ellipse at 14% 8%,#565656,transparent 66%),linear-gradient(135deg,#242424,#0e0e0e); border:1px solid #ffffff16 }
+.deck-art img { object-fit:cover; width:100%; height:100%; pointer-events:none }
+.deck-caption { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left;
+  padding:2px 3px 3px; font-size:13px; font-weight:600; letter-spacing:-.02em }
+.deck-add { color:var(--ink); background:linear-gradient(155deg,#fff,#d7d7d7); border-color:#ffffff80 }
+.deck-add .deck-art { background:linear-gradient(140deg,#e4e4e4,#f6f6f6); border-color:#0002 }
+.deck-copy { position:fixed!important; margin:0; translate:none!important; rotate:0deg!important; scale:1!important; transform:none;
+  z-index:999; transition:none!important; opacity:1!important; pointer-events:none; transform-origin:center; }
+.deck-center { position:absolute; left:50%; top:50%; translate:-50% -50%; z-index:4; transition:width .5s var(--settle),height .5s var(--settle),background .2s,border-color .2s }
+.deck-center.step-idle { box-shadow:none; background:transparent; color:transparent; border:1px dashed transparent; pointer-events:none; align-items:center; justify-content:center }
+.deck-center.target { color:#aaa; border-color:#555 }
+.deck-center.target.near { background:#ffffff09; color:#fff; border-color:#ddd }
+.deck-center:is(.step-create,.step-join,.step-choose) { width:min(268px,88vw); height:172px; background:linear-gradient(145deg,#282828,#111) }
+.deck-actions { padding:25px 8px 4px; display:grid; align-content:center; gap:5px; height:100%; animation:rise .45s var(--settle) both }
+.deck-actions button,.deck-footer button { display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:9px }
+.deck-actions button:hover,.deck-footer button:hover { background:var(--hover) }
+.deck-actions .deck-close { position:absolute; right:0; top:0; padding:5px }
+.deck-actions form label { display:grid; gap:6px; font-weight:600 }
+.deck-actions input { width:100%; background:#101010; border:1px solid var(--line-strong); border-radius:9px; padding:8px; color:var(--text) }
+.deck-actions form > div { display:flex; justify-content:space-between; margin-top:7px }
+.deck-actions .deck-confirm,.deck-actions .deck-confirm:hover { background:var(--white); color:var(--ink) }
+.deck-actions button:disabled,.deck-footer button:disabled { opacity:.4 }
+.deck-actions small { font-size:11px; color:var(--muted) }
+.deck-wave { position:fixed; left:50%; top:50%; width:90px; height:90px; border-radius:50%; border:1px solid #fff9;
+  pointer-events:none; animation:deck-wave .54s ease-out both }
+@keyframes deck-wave { from{transform:translate(-50%,-50%) scale(.6);opacity:1} to{transform:translate(-50%,-50%) scale(6);opacity:0} }
+.deck-footer { position:absolute; bottom:10px; left:50%; translate:-50% 0; display:flex; gap:6px; align-items:center; color:var(--muted); font-size:12px }
+@media(max-height:540px){ .deck-hub{--cw:clamp(76px,19vh,106px)} .deck-hand{bottom:32px} }
+@media(prefers-reduced-motion:reduce){ .deck-wave{display:none} }
+.deck-return { display:flex; flex-direction:column; gap:8px; padding:9px; text-transform:none }
+
+@media (hover:none) {
+  .deck-hand .deck-card { translate:calc(var(--d)*var(--spread)) calc(var(--abs)*7px); rotate:calc(var(--d)*7deg) }
+}
