@@ -25,6 +25,9 @@ function subscribe(channel, callback) {
 
 contextBridge.exposeInMainWorld('visor', {
   desktop: true,
+  checkUpdate: auth => ipcRenderer.invoke('update:check', auth),
+  installUpdate: auth => ipcRenderer.invoke('update:install', auth),
+  onUpdateProgress: callback => subscribe('update:progress',callback),
   platform: process.platform,
   sources: () => ipcRenderer.invoke('sources'),
   audioApps: () => ipcRenderer.invoke('audio:apps'),

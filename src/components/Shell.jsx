@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Cast, ImagePlus, LogOut, Monitor, Plus, PhoneOff, Radio, Smartphone, Trash2, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { ArrowRight, MoreHorizontal, Pencil, Cast, ImagePlus, LogOut, Monitor, Plus, PhoneOff, Radio, Smartphone, Trash2, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { deviceKind, endpointId, presencePublisher } from '../lib/presence.js'
 import { go, useRoute } from '../lib/route.js'
-import { Avatar, CopyButton, HoldButton, IconButton, ServerFace, usePopover } from './ui.jsx'
+import { Avatar, CopyButton, IconButton, ServerFace, usePopover } from './ui.jsx'
 import ServerHub from './ServerHub.jsx'
+import UpdateButton from './UpdateButton.jsx'
 import Tooltips from './Tooltips.jsx'
 import ProfilePhoto from './ProfilePhoto.jsx'
 import ScreenChannel from './ScreenChannel.jsx'
@@ -207,10 +208,17 @@ export default function Shell({ profile }) {
     return true
   }
 
-  const deleteServer = async () => {
-    await supabase.from('servers').delete().eq('id', serverId)
-    setServers((prev) => prev.filter((s) => s.id !== serverId))
-    go(null)
+  const deleteServer = async row => {
+    const {error} = await supabase.from('servers').delete().eq('id',row.id).eq('owner_id',profile.id).select('id').single()
+    if (error) throw error
+    setServers(prev => prev.filter(s => s.id !== row.id))
+  }
+
+  const renameServer = async name => {
+    const {data,error} = await supabase.from('servers').update({name}).eq('id',server.id).eq('owner_id',profile.id).select().single()
+    if (error) return false
+    setServers(rows => rows.map(row => row.id === data.id ? data : row))
+    return true
   }
 
   const deleteChannel = async (id) => {
@@ -232,27 +240,7 @@ export default function Shell({ profile }) {
 
   return (
     <div className={`shell ${!serverId ? 'in-hub' : ''} ${collapsed ? 'is-collapsed' : ''}`}>
-      {server && <nav className="rail" aria-label={server.name}>
-        <div className="server-stack">{servers.map(row => <button key={row.id} type="button"
-          className={'rail-item' + (row.id === serverId ? ' is-active' : '')}
-          aria-current={row.id === serverId ? 'page' : undefined} aria-label={row.name}
-          data-tip={row.id === serverId ? 'Voltar aos meus servidores' : row.name}
-          onClick={e => openServer(row,e.currentTarget)}><ServerFace server={row}/></button>)}</div>
-        <div className="rail-foot">
-          <div className={'call-status' + (call ? ' active' : '')}>
-            <button disabled={!call} title={callLabel + (call ? ' · '+call.name : '')} aria-label={callLabel}
-              onClick={() => go(call.server_id, call.id)}><Radio size={17}/><small>{callLabel}</small></button>
-            {call && <button title="Desconectar" aria-label="Desconectar" onClick={disconnect}><PhoneOff size={15}/></button>}
-          </div>
-          <button className="me" aria-label="Editar foto de perfil" data-tip={profile.username} onClick={() => setEditing(true)}>
-            <Avatar id={profile.id} revision={photo} name={profile.username} size={32} />
-          </button>
-          <IconButton label="Sair" onClick={logout}>
-            <LogOut size={16} strokeWidth={1.75} />
-          </IconButton>
-        </div>
-      </nav>}
-
+      <UpdateButton/>
       <Tooltips/>
       {serverPhoto && <ProfilePhoto server={serverPhoto} saved={revision =>
         setServers(rows => rows.map(row => row.id === serverPhoto.id ? {...row,photo_revision:revision} : row))}
@@ -260,11 +248,8 @@ export default function Shell({ profile }) {
       {editing && <ProfilePhoto profile={profile} saved={setPhoto} close={() => setEditing(false)} />}
       {server && <aside className="sidebar" aria-label="Canais">
 
-            <header className="side-head">
-              <h1 title={server.name}>{server.name}</h1>
-              {isOwner && <IconButton label="Foto do servidor" onClick={() => setServerPhoto(server)}><ImagePlus size={16}/></IconButton>}
-              <CopyButton text={server.invite_code} label="Copiar código do servidor" />
-            </header>
+            <ServerHeader key={server.id} server={server} owner={isOwner} back={e=>openServer(server,e.currentTarget)}
+              editPhoto={()=>setServerPhoto(server)} rename={renameServer} createChannel={createChannel}/>
             <PillList
               className="channel-list"
               items={channels?.filter(c => c.server_id === serverId && c.kind === 'screen') ?? []}
@@ -289,14 +274,14 @@ export default function Shell({ profile }) {
                 </div>
               )}
             />
-            {isOwner && (
-              <div className="side-foot">
-                <CreateChannel onCreate={createChannel} />
-                <HoldButton label="Segure para apagar" onConfirm={deleteServer}>
-                  <Trash2 size={15} strokeWidth={1.75} />
-                </HoldButton>
-              </div>
-            )}
+            <div className="side-foot account-foot">
+          <div className={'call-status' + (call ? ' active' : '')}>
+            <button disabled={!call} title={callLabel + (call ? ' · '+call.name : '')} aria-label={callLabel}
+              onClick={() => go(call.server_id, call.id)}><Radio size={17}/><small>{callLabel}</small></button>
+            {call && <button title="Desconectar" aria-label="Desconectar" onClick={disconnect}><PhoneOff size={15}/></button>}
+          </div>
+              <ProfileMenu profile={profile} photo={photo} edit={()=>setEditing(true)} logout={logout}/>
+            </div>
       </aside>}
 
       <main className="main">
@@ -312,7 +297,7 @@ export default function Shell({ profile }) {
           )}
         </header>}
         <div className="main-body">
-          {!serverId && servers && <ServerHub returningId={origin.current?.id} servers={servers} onSubmit={submitServer} onOpen={openServer} editProfile={() => setEditing(true)} logout={logout}/>}
+          {!serverId && servers && <ServerHub ownerId={profile.id} onDelete={deleteServer} returningId={origin.current?.id} servers={servers} onSubmit={submitServer} onOpen={openServer} editProfile={() => setEditing(true)} logout={logout}/>}
           {server && !channel && <div className="channel-landing">{channels?.filter(c => c.kind === 'screen' && c.server_id === serverId).map(c =>
             <button key={c.id} onClick={() => go(serverId,c.id)}><Cast size={22}/>{c.name}</button>)}</div>}
           {call && <div className="call-session" hidden={!callVisible}>
@@ -362,7 +347,7 @@ function NameForm({ placeholder, onSubmit, max, children, extra }) {
       {extra}
       <div className="name-row">
         <input autoFocus value={name} maxLength={max} placeholder={placeholder} onChange={(e) => setName(e.target.value)} />
-        <button className="mini-go" disabled={!name.trim() || busy} aria-label="Criar">
+        <button className="mini-go" disabled={!name.trim() || busy} aria-label="Confirmar">
           {children}
         </button>
       </div>
@@ -370,24 +355,33 @@ function NameForm({ placeholder, onSubmit, max, children, extra }) {
   )
 }
 
-function CreateChannel({ onCreate }) {
+function ServerHeader({server,owner,back,editPhoto,rename,createChannel}) {
   const pop = usePopover()
-  return (
-    <div className="pop-anchor" ref={pop.ref}>
-      <IconButton label="Novo canal de transmissão" active={pop.open} onClick={() => pop.setOpen((v) => !v)}>
-        <Plus size={16} strokeWidth={1.75} className="plus" />
-      </IconButton>
-      <div className={`popover pop-up ${pop.open ? 'is-open' : ''}`}>
-        {pop.open && (
-          <NameForm
-            placeholder="canal"
-            max={24}
-            onSubmit={async (v) => (await onCreate(v)) && (pop.setOpen(false), true)}
-          >
-            <Plus size={15} />
-          </NameForm>
-        )}
-      </div>
-    </div>
-  )
+  const [mode,setMode] = useState(null)
+  function open() { setMode(null); pop.setOpen(true) }
+  return <header ref={pop.ref} className="server-header">
+    <button className="server-cover rail-item is-active" onClick={back} data-tip="Voltar ao deck" aria-label="Voltar ao deck"
+      onContextMenu={e=>{e.preventDefault();open()}}><ServerFace server={server}/></button>
+    <button className="server-options" aria-label="Opções do servidor" aria-expanded={pop.open} onClick={()=>pop.open?pop.setOpen(false):open()}><MoreHorizontal size={17}/></button>
+    <h1>{server.name}</h1>
+    {pop.open && <div className="sidebar-menu">
+      {mode ? <NameForm key={mode} max={mode==='rename'?32:24} placeholder={mode==='rename'?'Nome do servidor':'Nome do canal'}
+        onSubmit={async v=>{const ok=await (mode==='rename'?rename:createChannel)(v);if(ok)pop.setOpen(false);return ok}}><ArrowRight size={15}/></NameForm> :
+        <>{owner && <><button onClick={()=>{pop.setOpen(false);editPhoto()}}><ImagePlus size={16}/>Trocar foto</button>
+        <button onClick={()=>setMode('rename')}><Pencil size={16}/>Trocar nome</button></>}
+        <div className="invite-action"><CopyButton text={server.invite_code} label="Copiar código"/><span>Copiar código</span></div>
+        {owner && <button onClick={()=>setMode('channel')}><Cast size={16}/>Criar canal</button>}</>}
+    </div>}
+  </header>
+}
+
+function ProfileMenu({profile,photo,edit,logout}) {
+  const pop = usePopover()
+  return <div className="profile-menu" ref={pop.ref}>
+    <button aria-label="Menu do perfil" aria-expanded={pop.open} data-tip={profile.username} onClick={()=>pop.setOpen(!pop.open)}>
+      <Avatar id={profile.id} revision={photo} name={profile.username} size={38}/>
+    </button>
+    {pop.open && <div className="sidebar-menu"><button onClick={()=>{pop.setOpen(false);edit()}}><ImagePlus size={16}/>Trocar foto</button>
+      <button onClick={logout}><LogOut size={16}/>Sair da conta</button></div>}
+  </div>
 }

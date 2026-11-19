@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Layers, LogIn, LogOut, Plus, UserRound, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Layers, LogIn, LogOut, Plus, Trash2, UserRound, X } from 'lucide-react'
 import { ServerFace, usePopover } from './ui.jsx'
 import './deck.css'
 
@@ -28,7 +28,7 @@ function Face({server}) {
   </>
 }
 
-export default function ServerHub({ servers, returningId, onOpen, onSubmit, editProfile, logout }) {
+export default function ServerHub({ servers, ownerId, onDelete, returningId, onOpen, onSubmit, editProfile, logout }) {
   const account = usePopover()
   const [page, setPage] = useState(() => Math.max(0, Math.floor(servers.findIndex(s => s.id === returningId)/serversPerPage)))
   const [step,setStep] = useState('idle')
@@ -38,6 +38,7 @@ export default function ServerHub({ servers, returningId, onOpen, onSubmit, edit
   const [error,setError] = useState('')
   const [busy,setBusy] = useState(false)
   const center = useRef(null)
+  const trash = useRef(null)
   const gesture = useRef(null)
   const timer = useRef(null)
   const held = useRef(false)
@@ -50,11 +51,13 @@ export default function ServerHub({ servers, returningId, onOpen, onSubmit, edit
   function clearGesture() {
     const g = gesture.current
     if (g) {
+      clearTimeout(g.trashTimer)
       g.detach?.()
       g.copy?.remove()
       g.node.style.opacity = ''
       gesture.current = null
     }
+    trash.current?.classList.remove('visible','arming')
     center.current?.classList.remove('target','near')
   }
   useLayoutEffect(() => () => { clearTimeout(timer.current); clearGesture() }, [])
@@ -70,10 +73,14 @@ export default function ServerHub({ servers, returningId, onOpen, onSubmit, edit
   },[step,selected,onOpen])
 
   function copyCard(node,rect) {
-    const copy = node.cloneNode(true)
-    copy.removeAttribute('data-server')
-    copy.removeAttribute('id')
-    copy.classList.add('deck-copy')
+    const copy = document.createElement('div')
+    const face = node.cloneNode(true)
+    face.removeAttribute('data-server')
+    face.classList.add('deck-facsimile')
+    const style = getComputedStyle(node)
+    Object.assign(face.style,{width:node.offsetWidth+'px',height:node.offsetHeight+'px',rotate:style.rotate,scale:style.scale})
+    copy.className = 'deck-copy'
+    copy.append(face)
     copy.inert = true
     Object.assign(copy.style,{left:rect.left+'px',top:rect.top+'px',width:rect.width+'px',height:rect.height+'px'})
     document.body.append(copy)
@@ -111,7 +118,9 @@ export default function ServerHub({ servers, returningId, onOpen, onSubmit, edit
     if (held.current || !e.isPrimary || e.button !== 0) return
     skipClick.current = false
     const node = e.currentTarget
-    gesture.current = {node,rect:node.getBoundingClientRect(),x:e.clientX,y:e.clientY,pointer:e.pointerId}
+    setError('')
+    if (server && server.owner_id===ownerId) trash.current.classList.add('visible')
+    gesture.current = {node,server,rect:node.getBoundingClientRect(),x:e.clientX,y:e.clientY,pointer:e.pointerId}
     const up = event => release(event,server)
     const cancel = event => release(event,server,true)
     const blur = () => cancel({pointerId:e.pointerId})
@@ -139,8 +148,40 @@ export default function ServerHub({ servers, returningId, onOpen, onSubmit, edit
     const r = g.copy.getBoundingClientRect()
     g.near = Math.abs(r.x+r.width/2-target.x-target.width/2)<target.width*.75 &&
       Math.abs(r.y+r.height/2-target.y-target.height/2)<target.height*.65
+    if (g.server && g.server.owner_id===ownerId) {
+      const bin = trash.current.getBoundingClientRect()
+      const inside = e.clientX>=bin.left && e.clientX<=bin.right && e.clientY>=bin.top && e.clientY<=bin.bottom
+      if (inside && !g.trashTimer) {
+        trash.current.classList.add('arming')
+        g.trashTimer = setTimeout(()=>discard(g),1500)
+      } else if (!inside && g.trashTimer) {
+        clearTimeout(g.trashTimer)
+        g.trashTimer = null
+        trash.current.classList.remove('arming')
+      }
+      if (inside) g.near=false
+    }
     center.current.classList.add('target')
     center.current.classList.toggle('near',g.near)
+  }
+  async function discard(g) {
+    if (gesture.current!==g || held.current) return
+    held.current=true
+    skipClick.current=true
+    g.detach()
+    const bin=trash.current.getBoundingClientRect()
+    const rect=g.copy.getBoundingClientRect()
+    const dx=bin.x+bin.width/2-rect.x-rect.width/2
+    const dy=bin.y+bin.height/2-rect.y-rect.height/2
+    Object.assign(g.copy.style,{left:rect.left+'px',top:rect.top+'px',transform:'none'})
+    const folding=g.copy.animate([
+      {transform:'perspective(400px) rotateX(0deg)',clipPath:'inset(0)'},
+      {transform:'perspective(400px) rotateX(44deg) rotateZ(-12deg) scale(.68)',clipPath:'polygon(0 0,100% 0,72% 100%,27% 82%)',offset:.45},
+      {transform:`translate(${dx}px,${dy}px) rotate(35deg) scale(.06)`,opacity:0}
+    ],{duration:reduced()?1:400,fill:'forwards'})
+    try { await folding.finished; if (gesture.current===g) await onDelete(g.server) }
+    catch { if(gesture.current===g)setError('Não foi possível apagar o servidor.') }
+    finally { if(gesture.current===g){clearGesture();held.current=false} }
   }
   function release(e,server,cancelled=false) {
     const g=gesture.current
@@ -148,6 +189,8 @@ export default function ServerHub({ servers, returningId, onOpen, onSubmit, edit
     if (!cancelled) move(e)
     if (!g.moved) { clearGesture(); return }
     skipClick.current=true
+    clearTimeout(g.trashTimer)
+    trash.current.classList.remove('visible','arming')
     g.detach?.()
     fly(server,g.node,!cancelled && g.near)
   }
@@ -219,6 +262,8 @@ export default function ServerHub({ servers, returningId, onOpen, onSubmit, edit
           if(!held.current)fly(server,e.currentTarget,true)
         }}><Face server={server}/></button>)}
     </div>
+    <div ref={trash} className="deck-trash" aria-label="Segure por 1,5 segundo para apagar"><Trash2 size={21}/></div>
+    {step==='idle' && error && <small className="deck-notice" role="alert">{error}</small>}
     <footer className="deck-footer"><Layers size={15}/> Deck
       {lastPage>0 && <><button disabled={activePage===0 || held.current} aria-label="Cartas anteriores" onClick={()=>setPage(activePage-1)}><ChevronLeft size={16}/></button>
         <button disabled={activePage===lastPage || held.current} aria-label="Próximas cartas" onClick={()=>setPage(activePage+1)}><ChevronRight size={16}/></button></>}

@@ -67,3 +67,11 @@
 @media (hover:none) {
   .deck-hand .deck-card { translate:calc(var(--d)*var(--spread)) calc(var(--abs)*7px); rotate:calc(var(--d)*7deg) }
 }
+.deck-hand .deck-add:hover { z-index:9 }
+.deck-facsimile { position:absolute; top:50%; left:50%; translate:-50% -50%; transform-origin:center; transform:none!important; transition:none }
+.deck-trash { position:absolute; right:clamp(16px,5vw,84px); top:50%; translate:0 -50%; width:72px; height:72px; display:grid; place-items:center; border:1px dashed var(--line-strong); border-radius:20px; color:var(--muted); opacity:0; pointer-events:none; transition:opacity .2s; overflow:hidden }
+.deck-trash.visible { opacity:.85 }
+.deck-trash.arming { color:white; border-style:solid }
+.deck-trash.arming::before { content:""; position:absolute; inset:0; background:#ffffff25; transform-origin:bottom; animation:trash-fill 1.5s linear both }
+@keyframes trash-fill { from {transform:scaleY(0)} to {transform:scaleY(1)} }
+.deck-notice { position:absolute; bottom:35%; color:var(--muted) }

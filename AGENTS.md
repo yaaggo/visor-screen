@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-18, fase 6 (1.3.0, motor Rust, fotos e multiplas transmissoes).
+Ultima atualizacao: 2026-11-19, versao 1.7.0 (atualizador, lateral nova, lixeira do deck).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -242,6 +242,20 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.7.0 — atualizacao automatica, lateral nova e lixeira do deck (2026-11-19):
+- Desktop empacotado consulta `desktop-updates/latest.json` (bucket privado do Supabase, leitura para
+  autenticados) a cada 15 min e ao voltar a rede. Havendo versao maior, um icone discreto aparece no canto
+  superior direito; o clique baixa o instalador em partes de 24 MB, confere SHA-256, roda `/S --force-run` e fecha.
+  Publicar: `npm run dist:win` e depois `pwsh scripts/publish-update.ps1` (usa `npx supabase storage cp`).
+  O GitHub continua recebendo a release, mas o app nao depende do repo privado.
+- A barra de servidores saiu: a troca e so pelas cartas. A lateral tem a capa do servidor (quadrado
+  arredondado, volta ao deck), o nome, os canais e no rodape o status da call e o menu do perfil
+  (trocar foto, sair). Botao direito na capa (ou `...`): trocar foto, trocar nome, copiar codigo, criar canal.
+- Deck: segurar um servidor proprio mostra a lixeira a direita; manter 1,5 s sobre ela dobra a carta e apaga.
+  Soltar antes cancela. A carta + so fica acima das outras no hover e nao muda de estrutura ao arrastar.
+- QA: `release/check170.cjs` (Electron + `release/deck170.html` no Vite 5199) cobre ordem das cartas,
+  cancelamento em 450 ms, exclusao em 1650 ms, menu da capa, menu do perfil e retorno ao deck.
 
 1.6.2 — no leque, as cartas dos servidores ficam acima da carta +, inclusive
 ao focar o +. Cada pagina agrupa ate tres servidores e a carta de adicionar.
