@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Layers, LogIn, LogOut, Plus, UserRound, X } from 'lucide-react'
 import { ServerFace, usePopover } from './ui.jsx'
 import './deck.css'
@@ -31,6 +32,7 @@ export default function ServerHub({ servers, returningId, onOpen, onSubmit, edit
   const account = usePopover()
   const [page, setPage] = useState(() => Math.max(0, Math.floor(servers.findIndex(s => s.id === returningId)/pageSize)))
   const [step,setStep] = useState('idle')
+  const [draw,setDraw] = useState(null)
   const [selected,setSelected] = useState(null)
   const [value,setValue] = useState('')
   const [error,setError] = useState('')
@@ -41,9 +43,10 @@ export default function ServerHub({ servers, returningId, onOpen, onSubmit, edit
   const held = useRef(false)
   const skipClick = useRef(false)
   const form = useRef(null)
-  const lastPage = Math.floor(servers.length/pageSize)
+  const deck = draw?.servers ?? servers
+  const lastPage = Math.floor(deck.length/pageSize)
   const activePage = Math.min(page,lastPage)
-  const cards = [...servers,null].slice(activePage*pageSize,(activePage+1)*pageSize)
+  const cards = [...deck,null].slice(activePage*pageSize,(activePage+1)*pageSize)
   function clearGesture() {
     const g = gesture.current
     if (g) {
@@ -61,7 +64,7 @@ export default function ServerHub({ servers, returningId, onOpen, onSubmit, edit
     if (step === 'arrived') {
       timer.current = setTimeout(() => {
         if (center.current) onOpen(selected,center.current.querySelector('.deck-art'))
-      },reduced() ? 0 : 175)
+      },reduced() ? 0 : 820)
       return () => clearTimeout(timer.current)
     }
   },[step,selected,onOpen])
@@ -93,11 +96,15 @@ export default function ServerHub({ servers, returningId, onOpen, onSubmit, edit
       {duration:reduced()?1: g.moved ? 280 : 230,easing:'cubic-bezier(.2,.8,.2,1)',fill:'forwards'})
     animation.onfinish = () => {
       if (gesture.current !== g) return
-      clearGesture()
       if (accept) {
-        setSelected(server)
-        setStep(server ? 'arrived' : 'choose')
+        // Place the same face in the center before removing its moving copy.
+        flushSync(() => {
+          setDraw({ id:server?.id ?? null, servers })
+          setSelected(server)
+          setStep(server ? 'arrived' : 'choose')
+        })
       } else held.current = false
+      clearGesture()
     }
   }
   function begin(e,server) {
@@ -145,11 +152,33 @@ export default function ServerHub({ servers, returningId, onOpen, onSubmit, edit
     fly(server,g.node,!cancelled && g.near)
   }
   function reset() {
-    clearGesture()
-    held.current=false
-    setSelected(null); setStep('idle'); setError(''); setValue('')
-    requestAnimationFrame(()=>document.querySelector('.deck-add')?.focus())
+    setStep('returning')
   }
+  useLayoutEffect(() => {
+    if (step !== 'returning') return
+    const panel = center.current
+    const destination = panel.parentElement.querySelector('.deck-hand .deck-add')
+    const returnCard = async () => {
+      // Let the selector close into its original card shape before moving it.
+      await Promise.allSettled(panel.getAnimations().map(a => a.finished))
+      if (cancelled) return
+      const from = panel.getBoundingClientRect()
+      const to = destination.getBoundingClientRect()
+      const dx = to.x + to.width/2 - from.x - from.width/2
+      const dy = to.y + to.height/2 - from.y - from.height/2
+      flight = panel.animate([{ transform:'none' }, { transform:`translate(${dx}px,${dy}px) rotate(${getComputedStyle(destination).rotate})` }],
+        {duration:reduced()?1:340,easing:'cubic-bezier(.22,.8,.18,1)',fill:'forwards'})
+      flight.onfinish = () => {
+        held.current = false
+        flushSync(() => {setDraw(null);setSelected(null);setStep('idle');setError('');setValue('')})
+        destination.focus({preventScroll:true})
+      }
+    }
+    let cancelled = false, flight
+    returnCard()
+    return () => { cancelled=true; flight?.cancel() }
+  },[step])
+
   async function submit(e) {
     e.preventDefault()
     if (!value.trim() || busy) return
@@ -167,8 +196,9 @@ export default function ServerHub({ servers, returningId, onOpen, onSubmit, edit
       <button className="hub-brand" aria-label="Menu da conta" aria-expanded={account.open} onClick={()=>account.setOpen(!account.open)}><i className="brand-mark" aria-hidden/>Visor</button>
       {account.open && <div className="hub-account-menu"><button onClick={()=>{account.setOpen(false);editProfile()}}><UserRound size={15}/>Perfil</button><button onClick={logout}><LogOut size={15}/>Sair</button></div>}
     </div></header>
+    {step==='arrived' && <div className="deck-wave" aria-hidden="true"/>}
     <div ref={center} className={'deck-center step-'+step}>
-      {step==='idle' ? <Layers size={24} aria-hidden/> : step==='arrived' ? <><i className="deck-wave"/><Face server={selected}/></> :
+      {step==='idle' ? <Layers size={24} aria-hidden/> : step==='arrived' || step==='returning' ? <Face server={selected}/> :
         <div ref={form} className="deck-actions">
           <button className="deck-close" aria-label="Voltar ao deck" disabled={busy} onClick={reset}><X size={15}/></button>
           {step==='choose' ? <>{[['create','Criar servidor',Plus],['join','Entrar em servidor',LogIn]].map(([key,label,Icon])=>
@@ -182,7 +212,7 @@ export default function ServerHub({ servers, returningId, onOpen, onSubmit, edit
     </div>
     <div className="deck-hand" inert={step!=='idle'} style={{'--gaps':Math.max(1,cards.length-1)}}>
       {cards.map((server,i)=><button key={server?.id ?? 'add'} data-server={server?.id} aria-label={server?.name ?? 'Adicionar servidor'}
-        className={'deck-card'+(server?'':' deck-add')} style={{'--d':i-(cards.length-1)/2,'--abs':Math.abs(i-(cards.length-1)/2),'--z':i+1}}
+        className={'deck-card'+(server?'':' deck-add')} data-drawn={draw && draw.id===(server?.id ?? null) ? true : undefined} style={{'--d':i-(cards.length-1)/2,'--abs':Math.abs(i-(cards.length-1)/2),'--z':i+1}}
         onPointerDown={e=>begin(e,server)}
         onLostPointerCapture={e=>release(e,server,true)} onClick={e=>{
           if(skipClick.current && e.detail!==0){skipClick.current=false;return}

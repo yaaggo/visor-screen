@@ -34,9 +34,30 @@
 .deck-actions .deck-confirm,.deck-actions .deck-confirm:hover { background:var(--white); color:var(--ink) }
 .deck-actions button:disabled,.deck-footer button:disabled { opacity:.4 }
 .deck-actions small { font-size:11px; color:var(--muted) }
-.deck-wave { position:fixed; left:50%; top:50%; width:90px; height:90px; border-radius:50%; border:1px solid #fff9;
-  pointer-events:none; animation:deck-wave .54s ease-out both }
-@keyframes deck-wave { from{transform:translate(-50%,-50%) scale(.6);opacity:1} to{transform:translate(-50%,-50%) scale(6);opacity:0} }
+.deck-card[data-drawn] { visibility:hidden }
+.deck-wave { position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:0 }
+.deck-wave::before,.deck-wave::after {
+  content:""; position:absolute; left:50%; top:50%; width:150vmax; height:150vmax; border-radius:50%;
+  background:radial-gradient(closest-side,transparent 8%,rgb(203 212 220 / .045) 29%,rgb(239 242 245 / .24) 57%,rgb(180 186 194 / .10) 76%,transparent 100%);
+  animation:deck-swell 800ms cubic-bezier(.18,.65,.3,1) both
+}
+.deck-wave::after { animation-delay:90ms; animation-duration:710ms; background:radial-gradient(closest-side,#fff2,transparent 72%) }
+@keyframes deck-swell {
+  0% { transform:translate(-50%,-50%) scale(.035); opacity:0 }
+  16% { opacity:1 }
+  70% { opacity:.84 }
+  100% { transform:translate(-50%,-50%) scale(1.45); opacity:0 }
+}
+.deck-center:is(.step-choose,.step-create,.step-join)::before {
+  content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+  background:linear-gradient(155deg,#fff,#d7d7d7); animation:deck-selector-surface 420ms ease-out both
+}
+@keyframes deck-selector-surface { from{opacity:1} to{opacity:0} }
+.deck-center:is(.step-choose,.step-create,.step-join) { overflow:hidden }
+.deck-actions { position:relative; animation:deck-options-in 320ms ease-out both }
+@keyframes deck-options-in { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:none} }
+.deck-center.step-returning { pointer-events:none; color:var(--ink); background:linear-gradient(155deg,#fff,#d7d7d7) }
+.deck-center.step-returning .deck-art { background:linear-gradient(140deg,#e4e4e4,#f6f6f6); border-color:#0002 }
 .deck-footer { position:absolute; bottom:10px; left:50%; translate:-50% 0; display:flex; gap:6px; align-items:center; color:var(--muted); font-size:12px }
 @media(max-height:540px){ .deck-hub{--cw:clamp(76px,19vh,106px)} .deck-hand{bottom:32px} }
 @media(prefers-reduced-motion:reduce){ .deck-wave{display:none} }
