@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-19, versao 1.7.2 (sala se recupera do limite de presenca).
+Ultima atualizacao: 2026-11-19, versao 1.7.3 (botao de atualizacao clicavel).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -242,6 +242,14 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.7.3 — botao de atualizacao clicavel (2026-11-19):
+- O Electron aplica `-webkit-app-region` na ordem do documento: um `no-drag` que vem ANTES de uma barra
+  `drag` perde para ela, e o Windows trata o clique como arrastar janela. O `UpdateButton` ficava antes de
+  `.hub-titlebar`/`.main-head`; agora e um portal no fim do `body`. Testado com clique real do SO
+  (SetCursorPos + mouse_event) numa janela com titleBarOverlay: posicao antiga nao recebe, nova recebe.
+- Quem esta na 1.7.0-1.7.2 nao consegue clicar no icone: instale a 1.7.3 pelo instalador uma vez.
+  Para elementos novos sobre barras de arrastar, renderize-os depois delas no DOM.
 
 1.7.2 — sala que se recupera do limite de presenca (2026-11-19):
 - Primeira partida real entre redes (Juazeiro/Petrolina): o transmissor sumiu da sala. O Supabase registrou

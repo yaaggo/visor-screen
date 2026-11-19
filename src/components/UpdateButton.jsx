@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { LoaderCircle, RotateCw } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 
@@ -32,9 +33,11 @@ export default function UpdateButton() {
   },[])
   if(!version)return null
   const label=installing ? 'Instalando atualização' : failed ? 'Tentar atualizar novamente' : 'Atualizar para '+version
-  return <button className="desktop-update" data-tip={label} aria-label={label} disabled={installing} onClick={async()=>{
+  // Portal no fim do body: o Electron aplica -webkit-app-region na ordem do documento, e as
+  // barras de arrastar renderizadas depois do botao engoliam o clique (viravam 'arrastar janela').
+  return createPortal(<button className="desktop-update" data-tip={label} aria-label={label} disabled={installing} onClick={async()=>{
     setInstalling(true); setFailed(false)
     try { if(!await window.visor.installUpdate(await credentials())) { setVersion(null); setInstalling(false) } }
     catch { setFailed(true); setInstalling(false) }
-  }}>{installing?<LoaderCircle size={16} className="spin"/>:<RotateCw size={16}/>}</button>
+  }}>{installing?<LoaderCircle size={16} className="spin"/>:<RotateCw size={16}/>}</button>, document.body)
 }
