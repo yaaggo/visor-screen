@@ -114,7 +114,17 @@ export default function Shell({ profile }) {
     }).subscribe()
     return () => { supabase.removeChannel(dir) }
   }, [serverId, directoryServer])
-  const listedVisitors = directoryServer === serverId ? visitors : browsingVisitors
+  const roster = new Map()
+  for (const visitor of directoryServer === serverId ? visitors : browsingVisitors) {
+    const id = visitor.endpointId ?? visitor.id
+    if (id !== endpointId) roster.set(id, visitor)
+  }
+  if (call && call.server_id === serverId) {
+    roster.set(endpointId, { id:endpointId, profileId:profile.id, channel:call.id,
+      name:profile.username, photo, device:deviceKind,
+      sharing:visitors.some(v => (v.endpointId ?? v.id) === endpointId && v.channel === call.id && v.sharing) })
+  }
+  const listedVisitors = [...roster.values()]
 
   const server = servers?.find((s) => s.id === serverId) ?? null
   const channel = channels?.find((c) => c.kind === 'screen' && c.server_id === serverId && c.id === channelId) ?? null
@@ -265,10 +275,10 @@ export default function Shell({ profile }) {
                     </button>
                   )}
                 </div>
-                  {c.id !== channelId && c.kind === 'screen' && <div className="channel-people">{listedVisitors.filter(v => v.channel === c.id).map(v =>
-                    <button key={v.presence_ref} className="participant" onClick={() => go(serverId,c.id)}>
+                  <div className="channel-people" role="group" aria-label={`Participantes de ${c.name}`}>{listedVisitors.filter(v => v.channel === c.id).map(v =>
+                    <button key={v.endpointId ?? v.id} className="participant" onClick={() => go(serverId,c.id)}>
                       <span className="participant-face"><Avatar id={v.profileId ?? v.id} revision={v.photo} name={v.name} size={24}/>{v.sharing && <i className="live-dot"/>}</span><span className="participant-meta"><span>{v.name}</span>{v.device === 'mobile' ? <Smartphone size={11} className="device-icon" aria-label="Celular"/> : <Monitor size={11} className="device-icon" aria-label="Computador"/>}</span>
-                    </button>)}</div>}
+                    </button>)}</div>
 
                 </div>
               )}

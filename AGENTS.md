@@ -243,6 +243,10 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 
 ## Estado atual
 
+1.5.1 — a lateral mostra nome e foto abaixo de cada canal, inclusive o canal selecionado.
+A propria sessao entra imediatamente pelo estado da call; o diretorio fornece os demais
+participantes por instancia e nao duplica a pessoa local quando chega a confirmacao.
+
 1.5.0 — servidores com fotos e canais de transmissao (2026-11-19):
 - No servidor, a barra mostra todas as participacoes. O icone ativo retorna ao hub com transicao inversa.
   Entrar em outro servidor abre a selecao de canais. A sala em andamento continua ate escolher outra ou desconectar.
