@@ -2123,18 +2123,39 @@ button:disabled {
 
 /* Central de servidores */
 .shell.in-hub { display:block; position:relative }
-.in-hub .sidebar, .in-hub .main-head, .in-hub .rail > :not(.rail-foot) { display:none }
 .in-hub .main, .call-session { height:100% }
-.in-hub .rail { position:absolute; bottom:0; left:0; width:64px; z-index:2; border:0; background:transparent }
-.server-hub { display:grid; place-items:center; height:100%; padding:64px 22px; overflow:auto }
-.hub-items { display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:12px; max-width:100% }
-.hub-card,.hub-server,.hub-flight { border:1px solid var(--line-strong); background:var(--surface); border-radius:18px }
-.hub-server,.hub-card { width:64px; height:64px; flex-shrink:0 }
-.hub-server,.hub-flight { font-weight:650; text-transform:uppercase }
-.hub-flight { position:fixed; z-index:100; pointer-events:none }
-.hub-card { position:relative; max-width:100%; transition:width var(--t-slow) var(--spring),height var(--t-med) var(--spring),border-radius var(--t-med) }
-.hub-card.step-choose { width:166px; height:92px }
-.hub-card.step-create,.hub-card.step-join { width:min(334px,84vw); height:56px }
+.server-hub {
+  --tile:clamp(74px,6.5vw,106px);
+  display:grid; place-items:center; height:100%; padding:64px 20px;
+  overflow:auto; background:var(--bg);
+}
+.hub-titlebar { position:absolute; top:0; left:0; right:0; height:56px; display:flex; align-items:center; padding:0 24px; z-index:2 }
+.is-desktop .hub-titlebar { -webkit-app-region:drag }
+.hub-account { position:relative; -webkit-app-region:no-drag }
+.hub-brand,.hub-account-menu button { display:flex; align-items:center; gap:9px }
+.hub-brand { font-size:18px; font-weight:650; letter-spacing:-.035em }
+.hub-account-menu { position:absolute; top:calc(100% + 12px); padding:5px; background:var(--raised); border:1px solid var(--line); border-radius:12px; animation:rise var(--t-med) var(--spring) both }
+.hub-account-menu button { padding:8px 12px; width:100%; border-radius:8px }
+.hub-account-menu button:hover { background:var(--hover) }
+.hub-items { display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:12px; width:100% }
+.hub-card,.hub-server { border:1px solid var(--line-strong); background:var(--surface); border-radius:calc(var(--tile)*.28); width:var(--tile); height:var(--tile); flex:none }
+.hub-server,.hub-initials { font-weight:650; font-size:22px; text-transform:uppercase }
+.hub-initials { display:grid; place-items:center; height:100%; animation:rise var(--t-med) var(--spring) both }
+.hub-card { position:relative; max-width:100%; transition:width var(--t-slow) var(--spring),height var(--t-slow) var(--spring),border-radius var(--t-med),background var(--t-med),color var(--t-med) }
+.hub-card.step-idle { background:var(--white); color:var(--ink); border-color:var(--white) }
+.hub-card.step-idle > button:hover { background:#ddd }
+.hub-card.step-idle > button:active { scale:.94 }
+.revealing .hub-card { animation:hub-add-arrives 620ms var(--spring) both }
+@keyframes hub-add-arrives {
+  from { width:0; margin-left:-12px; opacity:0; scale:.55 }
+  to { width:var(--tile); margin-left:0; opacity:1; scale:1 }
+}
+.shell > .rail { position:relative; z-index:3 }
+.rail > .rail-item.is-active { animation:none }
+.shell:not(.in-hub) > .sidebar { animation:hub-channels-in 560ms var(--out) both }
+@keyframes hub-channels-in { from { opacity:0; translate:-14px 0 } to { opacity:1; translate:0 } }
+.hub-card.step-choose { width:166px; height:100px; border-radius:20px }
+.hub-card.step-create,.hub-card.step-join { width:min(334px,84vw); height:56px; border-radius:17px }
 .hub-card button,.call-status button,.people-toggle { display:grid; place-items:center }
 .hub-card > button { height:100%; width:100%; border-radius:inherit }
 .hub-card button:hover,.hub-server:hover { background:var(--hover) }

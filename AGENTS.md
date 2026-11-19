@@ -243,6 +243,11 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 
 ## Estado atual
 
+1.4.1 — central minimalista. Apos login, a rota inicial monta apenas a marca Visor
+(com menu de conta) e o grupo central de servidores com o mais branco. Criar/entrar
+transforma o controle no icone do servidor, revela o mais a direita e leva o icone
+para a barra do servidor selecionado. Clicar nesse icone retorna a central.
+
 1.4.0 — central de servidores e continuidade da call (2026-11-18):
 - A central lista servidores criados pela conta ou adicionados por codigo de convite. O mais se transforma
   em Criar/Entrar. O codigo de dez caracteres pode ser copiado no cabecalho do servidor.

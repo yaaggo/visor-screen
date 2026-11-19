@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Hash, LogOut, Monitor, Plus, LayoutGrid, PhoneOff, Radio, Smartphone, Trash2, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { Hash, LogOut, Monitor, Plus, PhoneOff, Radio, Smartphone, Trash2, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { deviceKind, endpointId, presencePublisher } from '../lib/presence.js'
 import { go, useRoute } from '../lib/route.js'
@@ -134,16 +134,14 @@ export default function Shell({ profile }) {
     origin.current = null
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) return
     const to = item.getBoundingClientRect()
-    const ghost = item.cloneNode(true)
-    ghost.className = 'hub-flight'
-    ghost.setAttribute('aria-hidden','true')
-    ghost.tabIndex = -1
-    Object.assign(ghost.style, {left: to.left+'px', top: to.top+'px', width: to.width+'px', height: to.height+'px'})
-    document.body.append(ghost)
-    const flight = ghost.animate([{transform: 'translate('+ (from.x + from.width/2 - to.x - to.width/2) +'px,'+ (from.y + from.height/2 - to.y - to.height/2) +'px) scale(1.3)'}, {transform:'none'}],
-      {duration:520, easing:'cubic-bezier(.2,.8,.2,1)'})
-    flight.onfinish = () => ghost.remove()
-    return () => { flight.cancel(); ghost.remove() }
+    const dx = from.left + from.width / 2 - to.left - to.width / 2
+    const dy = from.top + from.height / 2 - to.top - to.height / 2
+    const flight = item.animate([
+      { transform: `translate(${dx}px, ${dy}px) scale(${from.width / to.width})`,
+        backgroundColor: 'var(--surface)', color: 'var(--text)', borderColor: 'var(--line-strong)' },
+      { transform: 'none' }
+    ], { duration: 700, easing: 'cubic-bezier(.22,.82,.18,1)' })
+    return () => flight.cancel()
   }, [serverId])
   function openServer(row, node) {
     origin.current = node.getBoundingClientRect()
@@ -196,18 +194,11 @@ export default function Shell({ profile }) {
 
   return (
     <div className={`shell ${!serverId ? 'in-hub' : ''} ${collapsed ? 'is-collapsed' : ''}`}>
-      <nav className="rail" aria-label="Servidores">
-        <IconButton label="Meus servidores" onClick={() => go(null)}><LayoutGrid size={18}/></IconButton>
-        <PillList
-          items={servers ?? []}
-          activeId={serverId}
-          render={(s) => (
-            <button key={s.id} type="button" data-id={s.id} className={`rail-item ${s.id === serverId ? 'is-active' : ''}`} data-tip={s.name} aria-label={s.name} onClick={() => go(s.id)}>
-              {s.name.slice(0, 2)}
-            </button>
-          )}
-        />
-
+      {server && <nav className="rail" aria-label={server.name}>
+        <button type="button" className="rail-item is-active" data-tip="Meus servidores"
+          aria-label="Voltar aos meus servidores" onClick={() => go(null)}>
+          {server.name.slice(0, 2)}
+        </button>
         <div className="rail-foot">
           <div className={'call-status' + (call ? ' active' : '')}>
             <button disabled={!call} title={callLabel + (call ? ' · '+call.name : '')} aria-label={callLabel}
@@ -221,12 +212,11 @@ export default function Shell({ profile }) {
             <LogOut size={16} strokeWidth={1.75} />
           </IconButton>
         </div>
-      </nav>
+      </nav>}
 
       {editing && <ProfilePhoto profile={profile} saved={setPhoto} close={() => setEditing(false)} />}
-      <aside className="sidebar" aria-label="Canais">
-        {server ? (
-          <>
+      {server && <aside className="sidebar" aria-label="Canais">
+
             <header className="side-head">
               <h1 title={server.name}>{server.name}</h1>
               <CopyButton text={server.invite_code} label="Copiar código do servidor" />
@@ -263,14 +253,10 @@ export default function Shell({ profile }) {
                 </HoldButton>
               </div>
             )}
-          </>
-        ) : (
-          <div className="side-empty" />
-        )}
-      </aside>
+      </aside>}
 
       <main className="main">
-        <header className="main-head">
+        {server && <header className="main-head">
           <IconButton label={collapsed ? 'Expandir' : 'Recolher'} onClick={() => setCollapsed((v) => !v)}>
             {collapsed ? <PanelLeftOpen size={16} strokeWidth={1.75} /> : <PanelLeftClose size={16} strokeWidth={1.75} />}
           </IconButton>
@@ -280,9 +266,9 @@ export default function Shell({ profile }) {
               <span>{channel.name}</span>
             </div>
           )}
-        </header>
+        </header>}
         <div className="main-body">
-          {!serverId && servers && <ServerHub servers={servers} onSubmit={submitServer} onOpen={openServer}/>}
+          {!serverId && servers && <ServerHub servers={servers} onSubmit={submitServer} onOpen={openServer} editProfile={() => setEditing(true)} logout={logout}/>}
           {channel?.kind === 'text' && <TextChannel key={channel.id} channel={channel} profile={profile} />}
           {call && <div className="call-session" hidden={!callVisible}>
             <ScreenChannel key={call.id} channel={call} profile={profile} chatChannel={call} visible={callVisible}

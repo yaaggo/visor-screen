@@ -1,12 +1,32 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, LogIn, Plus } from 'lucide-react'
+import { ArrowLeft, ArrowRight, LogIn, LogOut, Plus, UserRound } from 'lucide-react'
 
-export default function ServerHub({ servers, onOpen, onSubmit }) {
+import { usePopover } from './ui.jsx'
+
+export default function ServerHub({ servers, onOpen, onSubmit, editProfile, logout }) {
   const [step, setStep] = useState('idle')
   const [value, setValue] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const card = useRef(null)
+  const [snapshot, setSnapshot] = useState(null)
+  const [added, setAdded] = useState(null)
+  const items = useRef(null)
+  const account = usePopover()
+  const open = useRef(onOpen)
+  open.current = onOpen
+  useEffect(() => {
+    if (!added) return
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (step === 'settling') {
+      const timer = setTimeout(() => { setSnapshot(null); setStep('idle') }, reduced ? 0 : 480)
+      return () => clearTimeout(timer)
+    }
+    const timer = setTimeout(() => {
+      const tile = items.current?.querySelector(`[data-server="${added.id}"]`)
+      if (tile) open.current(added, tile)
+    }, reduced ? 0 : 880)
+    return () => clearTimeout(timer)
+  }, [added, step])
   const input = useRef(null)
   const join = step === 'join'
   function change(next) {
@@ -19,23 +39,39 @@ export default function ServerHub({ servers, onOpen, onSubmit }) {
     e.preventDefault()
     if (busy || !value.trim()) return
     setBusy(true)
+    setSnapshot(servers)
     try {
       const server = await onSubmit(step, value.trim())
-      onOpen(server, card.current)
+      setAdded(server)
+      change('settling')
     } catch {
       setError(join ? 'Não foi possível entrar com esse código.' : 'Não foi possível criar o servidor.')
-    } finally { setBusy(false) }
+      setSnapshot(null)
+      setBusy(false)
+    }
   }
-  return <section className="server-hub" aria-label="Meus servidores">
-    <div className="hub-items">
-      {servers.map(s => <button className="hub-server" key={s.id} title={s.name} aria-label={s.name}
+  return <section className="server-hub" aria-label="Meus servidores" onPointerDown={e => {
+    if (!busy && !e.target.closest('.hub-card') && step !== 'idle') change('idle')
+  }}>
+    <header className="hub-titlebar">
+      <div ref={account.ref} className="hub-account">
+        <button className="hub-brand" aria-label="Menu da conta" aria-expanded={account.open}
+          onClick={() => account.setOpen(!account.open)}><i className="brand-mark" aria-hidden/>Visor</button>
+        {account.open && <div className="hub-account-menu">
+          <button onClick={() => { account.setOpen(false); editProfile() }}><UserRound size={15}/>Perfil</button>
+          <button onClick={logout}><LogOut size={15}/>Sair</button>
+        </div>}
+      </div>
+    </header>
+    <div className={'hub-items' + (added && step === 'idle' ? ' revealing' : '')} ref={items}>
+      {(snapshot ?? servers).map(s => <button disabled={busy} data-server={s.id} className="hub-server" key={s.id} title={s.name} aria-label={s.name}
         onClick={e => onOpen(s, e.currentTarget)}>{s.name.slice(0,2)}</button>)}
-      <div ref={card} className={'hub-card step-' + step} onKeyDown={e => {
+      <div key={added && step === 'idle' ? 'revealed-add' : 'add'} className={'hub-card step-' + step} onKeyDown={e => {
         if (e.key === 'Escape' && !busy) change(step === 'choose' ? 'idle' : 'choose')
       }}>
-        {step === 'idle' ? <button aria-label="Adicionar servidor" onClick={() => change('choose')}><Plus /></button>
+        {step === 'settling' ? <span className="hub-initials">{added.name.slice(0,2)}</span> : step === 'idle' ? <button disabled={busy} aria-label="Adicionar servidor" onClick={() => change('choose')}><Plus size={30} strokeWidth={1.7}/></button>
           : step === 'choose' ? <div className="hub-choice">
-            <button onClick={() => change('create')}><Plus size={16}/>Criar</button>
+            <button autoFocus onClick={() => change('create')}><Plus size={16}/>Criar</button>
             <button onClick={() => change('join')}><LogIn size={16}/>Entrar</button>
           </div> : <form onSubmit={submit}>
             <button type="button" disabled={busy} aria-label="Voltar" onClick={() => change('choose')}><ArrowLeft size={16}/></button>
