@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, LogIn, LogOut, Plus, UserRound } from 'lucide-react'
 
-import { usePopover } from './ui.jsx'
+import { ServerFace, usePopover } from './ui.jsx'
 
 export default function ServerHub({ servers, onOpen, onSubmit, editProfile, logout }) {
   const [step, setStep] = useState('idle')
@@ -65,11 +65,11 @@ export default function ServerHub({ servers, onOpen, onSubmit, editProfile, logo
     </header>
     <div className={'hub-items' + (added && step === 'idle' ? ' revealing' : '')} ref={items}>
       {(snapshot ?? servers).map(s => <button disabled={busy} data-server={s.id} className="hub-server" key={s.id} title={s.name} aria-label={s.name}
-        onClick={e => onOpen(s, e.currentTarget)}>{s.name.slice(0,2)}</button>)}
+        onClick={e => onOpen(s, e.currentTarget)}><ServerFace server={s}/></button>)}
       <div key={added && step === 'idle' ? 'revealed-add' : 'add'} className={'hub-card step-' + step} onKeyDown={e => {
         if (e.key === 'Escape' && !busy) change(step === 'choose' ? 'idle' : 'choose')
       }}>
-        {step === 'settling' ? <span className="hub-initials">{added.name.slice(0,2)}</span> : step === 'idle' ? <button disabled={busy} aria-label="Adicionar servidor" onClick={() => change('choose')}><Plus size={30} strokeWidth={1.7}/></button>
+        {step === 'settling' ? <span className="hub-initials"><ServerFace server={added}/></span> : step === 'idle' ? <button disabled={busy} aria-label="Adicionar servidor" onClick={() => change('choose')}><Plus size={30} strokeWidth={1.7}/></button>
           : step === 'choose' ? <div className="hub-choice">
             <button autoFocus onClick={() => change('create')}><Plus size={16}/>Criar</button>
             <button onClick={() => change('join')}><LogIn size={16}/>Entrar</button>

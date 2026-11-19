@@ -243,6 +243,21 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 
 ## Estado atual
 
+1.5.0 — servidores com fotos e canais de transmissao (2026-11-19):
+- No servidor, a barra mostra todas as participacoes. O icone ativo retorna ao hub com transicao inversa.
+  Entrar em outro servidor abre a selecao de canais. A sala em andamento continua ate escolher outra ou desconectar.
+- Novos servidores recebem apenas tela. Canais novos sao de transmissao e mensagens novas pertencem ao
+  chat da call. O historico dos canais antigos de texto permanece no banco, fora da interface.
+- O dono troca a foto no cabecalho do servidor. Recorte WebP 256 px / 64 KiB, politica de escrita por dono e
+  revisao em servers para invalidar cache. Migracao 20261119113603 aplicada no projeto remoto.
+- Tooltips usam popover na camada superior. A grade mede o espaco disponivel e escolhe a quantidade de colunas.
+  Avatares laterais maiores. O hover de uma tela ja em exibicao dispensa a segunda reproducao de video.
+- Diagnostico do espectador preserva a amostra da ultima pausa contabilizada pelo WebRTC. O loopback
+  historico pesado registrou captura Rust a 60 FPS e codificacao minima de 41 FPS; nao reproduz a rede da amiga.
+- QA no Electron com Supabase real: dois servidores, chat de call, upload e exibicao de foto na barra e na
+  central, tooltip na camada superior, retorno animado, call mantida ao trocar servidor e grade com quatro
+  videos sinteticos em 920x540 e 320x640.
+
 1.4.1 — central minimalista. Apos login, a rota inicial monta apenas a marca Visor
 (com menu de conta) e o grupo central de servidores com o mais branco. Criar/entrar
 transforma o controle no icone do servidor, revela o mais a direita e leva o icone

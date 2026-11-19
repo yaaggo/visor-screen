@@ -2091,10 +2091,10 @@ button:disabled {
   font-weight: 650;
   color: var(--text);
 }
-.stream-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); grid-auto-rows: minmax(0,1fr); height: 100%; gap: 6px }
-.stream-grid[data-count="1"] { grid-template-columns: 1fr }
-.stage-wrap { container-type: size }
-@container (max-aspect-ratio: 2/1) { .stream-grid {grid-template-columns: 1fr} }
+.stage-wrap { container-type:size }
+.stream-grid { display:grid; grid-template-columns:repeat(var(--columns,1),minmax(0,1fr));
+  grid-auto-rows:minmax(min(135px,100%),1fr); grid-template-rows:repeat(var(--rows,1),minmax(min(135px,100%),1fr));
+  height:100%; gap:8px; overflow:auto; overscroll-behavior:contain }
 .stage { min-height: 0; min-width: 0 }
 .stage video { min-height: 0; min-width: 0 }
 .stream-hover,.stream-menu { position: fixed; z-index: 100; background: #242424; border: 1px solid var(--line); border-radius: var(--r-md); animation: slide-in var(--t-med) var(--spring) both }
@@ -2193,3 +2193,47 @@ button:disabled {
   .screen.with-chat .screen-chat { position:absolute; z-index:5; right:12px; top:58px; bottom:78px; width:min(300px,calc(100% - 24px)); border:1px solid var(--line-strong); border-radius:var(--r-xl) }
   .screen.with-chat .screen-chat > .chat { width:100% }
 }
+
+/* Contornos e superficies do palco e da central */
+[data-tip]::after { display:none }
+.global-tip { position:fixed; inset:auto; margin:0; pointer-events:none; z-index:99999; max-width:calc(100vw - 12px);
+  border:1px solid #fff4; background:#ededed; color:#151515; padding:5px 9px; border-radius:9px; font-family:inherit; font-size:12px; font-weight:550; line-height:1.4;
+  box-shadow:0 3px 16px #0006 }
+.shell { --edge:linear-gradient(150deg,#ffffff45,#ffffff0c 45%,#ffffff25) }
+.server-hub { background:radial-gradient(ellipse at 46% 43%,#151515 0%,#0b0b0b 65%,#090909); border:1px solid #fff2; border-radius:24px }
+.hub-server,.hub-card:not(.step-idle),.server-flight,.channel-landing button { background:linear-gradient(155deg,#222,#111 70%) padding-box,var(--edge,linear-gradient(145deg,#555,#242424)) border-box; border:1px solid transparent }
+.hub-card.step-idle { background:linear-gradient(145deg,#fff,#dedede); box-shadow:inset 0 1px 1px #fff }
+.server-flight { position:fixed; z-index:1000; pointer-events:none; overflow:hidden; text-transform:uppercase; font-weight:650 }
+.server-stack { width:100%; overflow:auto; scrollbar-width:none; display:flex; flex-direction:column; gap:9px; align-items:center; padding:5px 0; min-height:0 }
+.server-stack .rail-item { position:relative; overflow:hidden; animation:none; border-radius:15px }
+.server-stack .is-active { box-shadow:0 0 0 2px #fff4 }
+.server-photo { display:block; width:100%; height:100%; object-fit:cover; border-radius:inherit }
+.server-crop canvas { border-radius:22% }
+.hub-initials { border-radius:inherit }
+.side-head h1 { margin-right:auto; overflow:hidden; text-overflow:ellipsis }
+.channel-landing { display:flex; align-content:center; justify-content:center; align-items:center; flex-wrap:wrap; gap:12px; height:100% }
+.channel-landing button { display:grid; justify-items:center; gap:8px; min-width:90px; padding:15px; border-radius:18px }
+.stage,.idle-frame,.composer,.island,.screen-chat { border:1px solid #ffffff21; box-shadow:inset 0 1px 0 #ffffff09 }
+.idle-frame { background:linear-gradient(145deg,#111,#0c0c0c); border-radius:24px }
+.screen-chat { margin:16px 12px 16px 0; border-radius:20px; background:linear-gradient(145deg,#121212,#0b0b0b) }
+.screen-chat > .chat { width:100% }
+.screen:not(.with-chat) .screen-chat { visibility:hidden }
+.composer { background:linear-gradient(150deg,#1b1b1b,#111); border-radius:16px }
+.composer:focus-within { border-color:#ffffff54 }
+.people-drawer.is-open .people-track { width:66px }
+.people-track { gap:10px; padding-block:4px }
+.people-track .participant,.people-track .participant:hover { border:0; padding:0; background:transparent }
+.people-track .avatar { border:0; box-shadow:none }
+.people-track .participant[aria-pressed=true] .live-dot { box-shadow:0 0 8px #fff8 }
+.person-device { right:-1px; top:auto; bottom:0 }
+.people-track .live-dot { right:2px; top:0; bottom:auto }
+.stage-wrap:has(.stream-grid) { padding:12px 36px 72px 12px }
+.stage-wrap:has(.stream-grid):has(.people-drawer.is-open) { padding-right:94px }
+.people-drawer { right:10px }
+@media(max-width:600px){
+  .stage-wrap:has(.stream-grid):has(.people-drawer.is-open){ padding-right:68px }
+  .people-drawer.is-open .people-track { width:42px }
+  .people-track .avatar { width:38px!important;height:38px!important }
+}
+
+.composer input,.composer input:focus { background:transparent; border:0 }

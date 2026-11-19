@@ -375,7 +375,12 @@ export class ScreenRoom {
       let changed = false
       inbound.forEach((input, i) => {
         if (this.inputs.get(input.id) === input) {
-          input.stats = readInboundVideo(...samples[0][i])
+          const stats = readInboundVideo(...samples[0][i])
+          if (stats?.freezeDelta > 0) input.lastFreeze = {
+            at: Date.now(), duration: stats.freezeMs, loss: stats.loss, jitter: stats.jitter,
+            bufferMs: stats.bufferMs, decodeMs: stats.decodeMs, dropped: stats.dropped
+          }
+          input.stats = stats && { ...stats, lastFreeze: input.lastFreeze }
           changed = true
         }
       })

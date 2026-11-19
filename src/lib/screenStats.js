@@ -87,6 +87,8 @@ export function readInboundVideo(report, previous) {
     kbps: rate(stat, prior, 'bytesReceived', 8),
     dropped: delta(stat, prior, 'framesDropped'),
     freezes: stat.freezeCount,
+    freezeDelta: delta(stat, prior, 'freezeCount'),
+    freezeMs: millis(delta(stat, prior, 'totalFreezesDuration')),
     decodeMs: averageMs(stat, prior, 'totalDecodeTime', 'framesDecoded'),
     bufferMs: averageMs(stat, prior, 'jitterBufferDelay', 'jitterBufferEmittedCount'),
     decoder: stat.decoderImplementation,

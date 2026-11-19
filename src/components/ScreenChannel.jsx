@@ -9,6 +9,7 @@ import { desktop } from '../lib/env.js'
 import { captureDesktop, captureDevice, captureWeb } from '../lib/sources.js'
 import { Avatar, IconButton } from './ui.jsx'
 import SharePanel, { exeKey, pref, useShareConfig } from './SharePanel.jsx'
+import StreamGrid from './StreamGrid.jsx'
 import TextChannel from './TextChannel.jsx'
 
 let selfPid = 0
@@ -190,7 +191,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
       aria-pressed={p.sharing ? active : undefined}
       onMouseEnter={e => {
         clearTimeout(hoverTimer.current)
-        if (!p.sharing) return
+        if (!p.sharing || active) return
         const rect = e.currentTarget.getBoundingClientRect()
         setHover({id:p.id, peer:p, left:Math.min(innerWidth-212, Math.max(8,rect.left)), top:Math.max(8,rect.top-126)})
       }} onMouseLeave={hidePreview}
@@ -201,7 +202,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
         setHover(null)
         setMenu({ id:p.id, peer:p, x:Math.min(innerWidth-160,e.clientX), y:Math.min(innerHeight-48,e.clientY) })
       }}>
-      <span className="participant-face"><Avatar id={p.profileId ?? p.id} revision={own ? photo : p.photo} name={p.name} size={compact ? 38 : 60}/>
+      <span className="participant-face"><Avatar id={p.profileId ?? p.id} revision={own ? photo : p.photo} name={p.name} size={compact ? 52 : 60}/>
         <span className="person-device">{(own ? deviceKind : p.device) === 'mobile' ? <Smartphone size={9} aria-label="Celular"/> : <Monitor size={9} aria-label="Computador"/>}</span>
         {p.sharing && <i className="live-dot"/>}</span>
       <span className="participant-meta"><span>{p.name}</span>{(own ? deviceKind : p.device) === 'mobile' ? <Smartphone size={11} className="device-icon" aria-label="Celular"/> : <Monitor size={11} className="device-icon" aria-label="Computador"/>}</span>{compact && !!p.watching?.length && <Eye size={12} aria-label="Assistindo"/>}
@@ -232,12 +233,12 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
       {menu && createPortal(<button autoFocus className="stream-menu" style={{left:menu.x,top:menu.y}} onPointerDown={e => e.stopPropagation()}
         onClick={() => toggle(menu.id, menu.peer)}>{tiles.some(v => v.id === menu.id) ? 'Parar de assistir' : 'Assistir'}</button>,document.body)}
       <div className="stage-wrap">
-        {tiles.length ? <div className="stream-grid" data-count={tiles.length}>
+        {tiles.length ? <StreamGrid count={tiles.length}>
           {tiles.map(tile => <Stage key={tile.id} stream={tile.stream} local={tile.id === endpointId} stats={tile.stats}
             sendStats={s.sendStats} captureEngine={s.captureEngine} captureStats={s.captureStats}
             hasAudio={tile.id !== endpointId && !!tile.stream?.getAudioTracks().length}
             watchingName={allPeers.find(p => p.id === tile.id)?.name}/>)}
-        </div> : <div className="idle-frame" aria-label="Sem transmissão" />}
+        </StreamGrid> : <div className="idle-frame" aria-label="Sem transmissão" />}
 
         <aside className={'people-drawer' + (peopleOpen ? ' is-open' : '')} aria-label="Participantes">
           <button className="people-toggle" aria-label={peopleOpen ? 'Ocultar participantes' : 'Mostrar participantes'}
@@ -264,7 +265,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
 
         {chatChannel && (
           <IconButton
-            label={chat ? 'Fechar chat' : 'Chat'}
+            label={chat ? 'Fechar chat da chamada' : 'Abrir chat da chamada'}
             className="chat-toggle"
             active={chat}
             onClick={() => {
@@ -272,7 +273,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
               pref.set('visor.chatOpen', !chat)
             }}
           >
-            {chat ? <X size={16} strokeWidth={1.75} /> : <MessageSquare size={16} strokeWidth={1.75} />}
+            <MessageSquare size={17} fill={chat ? 'currentColor' : 'none'}/>
           </IconButton>
         )}
       </div>
@@ -522,8 +523,17 @@ function Diagnostics({ local, stats, sendStats, captureEngine, captureStats }) {
         <Cell k="fps receb." v={stats.fps} />
         <Cell k="fps decod." v={stats.decoded} />
         <Cell k="descart" v={stats.dropped} bad={stats.dropped > 0} />
-        <Cell k="travou" v={stats.freezes} bad={stats.freezes > 0} />
+        <Cell k="travou" v={stats.freezes} bad={stats.freezeDelta > 0} />
+
       </div>
+      {stats.lastFreeze && <div className="dg-row">
+        <span className="dg-name">Pausa {new Date(stats.lastFreeze.at).toLocaleTimeString()}</span>
+        <Cell k="ms no intervalo" v={ms(stats.lastFreeze.duration)} bad />
+        <Cell k="perda" v={pct(stats.lastFreeze.loss)}/>
+        <Cell k="jitter" v={ms(stats.lastFreeze.jitter)}/>
+        <Cell k="buffer" v={ms(stats.lastFreeze.bufferMs)}/>
+        <Cell k="ms/q" v={stats.lastFreeze.decodeMs}/>
+      </div>}
       <div className="dg-row">
         <Cell k="res" v={stats.height ? `${stats.width}x${stats.height}` : null} />
         <Cell k="mbps" v={mbps(stats.kbps)} />

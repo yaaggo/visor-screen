@@ -37,7 +37,8 @@ async function uploadPhoto(id, blob, onProgress) {
   })
 }
 
-export default function ProfilePhoto({ profile, saved, close }) {
+export default function ProfilePhoto({ profile, server, saved, close }) {
+  const title = server ? 'Foto do servidor' : 'Foto de perfil'
   const dialog = useRef(null), picker = useRef(null), canvas = useRef(null), drag = useRef(null)
   const [image, setImage] = useState(null)
   const [zoom, setZoom] = useState(1)
@@ -86,20 +87,25 @@ export default function ProfilePhoto({ profile, saved, close }) {
       const blob = await new Promise(resolve => canvas.current.toBlob(resolve, 'image/webp', .78))
       if (blob?.type !== 'image/webp' || blob.size > 65536) throw Error()
       setProgress(0)
-      await uploadPhoto(profile.id, blob, setProgress)
-      saved(Date.now())
+      await uploadPhoto(server ? 'servers/' + server.id : profile.id, blob, setProgress)
+      const revision = Date.now()
+      if (server) {
+        const {error} = await supabase.from('servers').update({photo_revision:revision}).eq('id',server.id).select('id').single()
+        if (error) throw error
+      }
+      saved(revision)
       setPhase('done')
     } catch { setPhase('crop'); setError('Falha ao salvar. Tente novamente.') }
   }
-  return <dialog ref={dialog} className="photo-dialog" style={motion} onCancel={e => { if (phase === 'saving') e.preventDefault() }} onClose={close} aria-label="Foto de perfil">
-    <header><strong>Foto de perfil</strong><button aria-label="Fechar" disabled={phase === 'saving'} onClick={close}><X size={18}/></button></header>
+  return <dialog ref={dialog} className={'photo-dialog' + (server ? ' server-crop' : '')} style={motion} onCancel={e => { if (phase === 'saving') e.preventDefault() }} onClose={close} aria-label={title}>
+    <header><strong>{title}</strong><button aria-label="Fechar" disabled={phase === 'saving'} onClick={close}><X size={18}/></button></header>
     <input ref={picker} type="file" hidden accept="image/jpeg,image/png,image/webp" onChange={e => { choose(e.target.files[0]); e.target.value = '' }}/>
     {phase === 'pick' ? <button className={'photo-drop' + (near ? ' near' : '')} onClick={() => picker.current.click()}
       onDragOver={e => { e.preventDefault(); setNear(true) }} onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setNear(false) }}
       onDrop={e => { e.preventDefault(); choose(e.dataTransfer.files[0]) }}>
       <i><ArrowUp/></i><strong>{near ? 'Solte sua foto' : 'Escolher ou soltar foto'}</strong><small>JPG, PNG ou WebP · até 12 MB</small>
     </button> : <>
-      <canvas ref={canvas} width={size} height={size} aria-label="Recorte circular. Arraste ou use as setas." tabIndex={0}
+      <canvas ref={canvas} width={size} height={size} aria-label="Recorte. Arraste ou use as setas." tabIndex={0}
         onKeyDown={e => {
           const d = { ArrowLeft: [-.02,0], ArrowRight: [.02,0], ArrowUp: [0,-.02], ArrowDown: [0,.02] }[e.key]
           if (d && phase === 'crop') { e.preventDefault(); setCenter(([x,y]) => [clamp(x+d[0],1),clamp(y+d[1],1)]) }
