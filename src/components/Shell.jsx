@@ -308,20 +308,15 @@ export default function Shell({ profile }) {
                     </button>
                   )}
                 </div>
-                  <div className="channel-people" role="group" aria-label={`Participantes de ${c.name}`}>{listedVisitors.filter(v => v.channel === c.id).map(v =>
-                    <button key={v.endpointId ?? v.id} className="participant" onClick={() => go(serverId,c.id)}>
-                      <span className="participant-face"><Avatar id={v.profileId ?? v.id} revision={v.photo} name={v.name} size={24}/>{v.sharing && <i className="live-dot"/>}</span><span className="participant-meta"><span>{v.name}</span>{v.device === 'mobile' ? <Smartphone size={11} className="device-icon" aria-label="Celular"/> : <Monitor size={11} className="device-icon" aria-label="Computador"/>}</span>
-                    </button>)}</div>
+                  <ChannelCrowd people={listedVisitors.filter(v => v.channel === c.id)} label={c.name} onOpen={() => go(serverId, c.id)}/>
 
                 </div>
               )}
             />
             <div className="side-foot account-foot">
-          <div className={'call-status' + (call ? ' active' : '')}>
-            <button disabled={!call} title={callLabel + (call ? ' · '+call.name : '')} aria-label={callLabel}
-              onClick={() => go(call.server_id, call.id)}><Radio size={17}/><small>{callLabel}</small></button>
-            {call && <button title="Desconectar" aria-label="Desconectar" onClick={disconnect}><PhoneOff size={15}/></button>}
-          </div>
+          {call ? <CallCard call={call} server={servers?.find(x => x.id === call.server_id)} connected={connected}
+            live={listedVisitors.some(v => (v.endpointId ?? v.id) === endpointId && v.sharing)} here={callVisible}
+            onOpen={() => go(call.server_id, call.id)} onLeave={disconnect}/> : <span className="foot-idle"/>}
               <ProfileMenu profile={profile} photo={photo} edit={()=>setEditing(true)} logout={logout}/>
             </div>
       </aside>}
@@ -337,6 +332,7 @@ export default function Shell({ profile }) {
               <span>{channel.name}</span>
             </div>
           )}
+          <div id="call-head-slot" className="head-slot"/>
         </header>}
         <div className="main-body">
           {!serverId && servers && <ServerHub ownerId={profile.id} onDelete={deleteServer} returningId={origin.current?.id} servers={servers} onSubmit={submitServer} onOpen={openServer} editProfile={() => setEditing(true)} logout={logout}/>}
@@ -425,5 +421,33 @@ function ProfileMenu({profile,photo,edit,logout}) {
     </button>
     {pop.open && <div className="sidebar-menu"><button onClick={()=>{pop.setOpen(false);edit()}}><ImagePlus size={16}/>Trocar foto</button>
       <button onClick={logout}><LogOut size={16}/>Sair da conta</button></div>}
+  </div>
+}
+
+// Lateral: quem transmite num canal vira um mini leque de cartas; quem assiste, avatares pequenos.
+function ChannelCrowd({ people, label, onOpen }) {
+  if (!people.length) return null
+  const live = people.filter(p => p.sharing), crowd = people.filter(p => !p.sharing)
+  return <button className="channel-crowd" aria-label={`${people.length} em ${label}`} onClick={onOpen}>
+    {!!live.length && <span className="mini-hand" style={{ '--n': live.length }}>{live.slice(0, 5).map((p, i) =>
+      <span key={p.endpointId ?? p.id} className="mini-card" data-tip={p.name} style={{ '--d': i - (Math.min(live.length, 5) - 1) / 2 }}>
+        <Avatar id={p.profileId ?? p.id} revision={p.photo} name={p.name} size={18}/><i className="live-dot"/>
+      </span>)}</span>}
+    {!!crowd.length && <span className="mini-crowd">{crowd.slice(0, 4).map(p =>
+      <span key={p.endpointId ?? p.id} data-tip={p.name}><Avatar id={p.profileId ?? p.id} revision={p.photo} name={p.name} size={20}/></span>)}
+      {crowd.length > 4 && <small>+{crowd.length - 4}</small>}</span>}
+    <span className="crowd-count">{live.length ? `${live.length} ao vivo` : `${people.length}`}</span>
+  </button>
+}
+
+// Rodape: a call em andamento vira uma carta deitada (pulsa quando voce esta ao vivo).
+function CallCard({ call, server, connected, live, here, onOpen, onLeave }) {
+  return <div className={'call-card' + (live ? ' is-live' : '') + (connected ? '' : ' is-connecting') + (here ? ' is-here' : '')}>
+    <button className="call-card-main" onClick={onOpen} aria-label={'Voltar para ' + call.name} data-tip={here ? call.name : 'Voltar para a call'}>
+      <span className="call-card-face">{server ? <ServerFace server={server}/> : <Cast size={14}/>}</span>
+      <span className="call-card-text"><b>{call.name}</b><small>{live ? 'ao vivo' : connected ? 'na call' : 'conectando'}</small></span>
+      <i className="live-dot"/>
+    </button>
+    <button className="call-card-leave" aria-label="Desconectar" data-tip="Desconectar" onClick={onLeave}><PhoneOff size={14}/></button>
   </div>
 }

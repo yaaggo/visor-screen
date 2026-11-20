@@ -1,0 +1,127 @@
+/* Mesa de cartas da sala (CardTable) */
+.card-table { --hw:clamp(70px,13cqh,92px); --hh:calc(var(--hw)*1.34); position:absolute; inset:16px; display:flex; flex-direction:column; container-type:size }
+.table-felt { position:relative; flex:1; min-height:0; margin-bottom:calc(var(--hh)*.78 + 14px); border-radius:var(--r-xl); transition:box-shadow .25s }
+.card-table.no-hand .table-felt { margin-bottom:20px }
+.table-felt.is-empty { border:1px solid #ffffff1c; background:radial-gradient(ellipse at 50% 46%,#141414,#0b0b0b 70%) }
+.card-table.is-dragging .table-felt { box-shadow:inset 0 0 0 1px #ffffff26 }
+.table-felt.is-near { box-shadow:inset 0 0 0 1px #ffffff70,inset 0 0 70px #ffffff0a }
+
+.table-slot { position:absolute; left:50%; top:50%; translate:-50% -50%; width:calc(var(--hw)*1.25); height:calc(var(--hh)*1.25);
+  display:grid; place-items:center; border:1px dashed #ffffff26; border-radius:var(--r-lg); color:#ffffff40 }
+.table-placeholder { position:absolute; border:1.5px dashed #ffffffb0; border-radius:var(--r-xl); background:#ffffff0a;
+  transition:left .4s var(--spring),top .4s var(--spring),width .4s var(--spring),height .4s var(--spring); animation:slot-in .3s var(--out) both; pointer-events:none }
+@keyframes slot-in { from { opacity:0; scale:.92 } }
+.spot-chip { position:absolute; top:12px; left:50%; translate:-50% 0; z-index:9; display:flex; align-items:center; gap:6px; padding:7px 13px;
+  border-radius:999px; font-size:12px; font-weight:600; color:var(--text); background:rgb(17 17 17 / .9); border:1px dashed #ffffff60;
+  animation:rise .3s var(--spring) both; transition:background .2s,color .2s,scale .3s var(--spring) }
+.spot-chip.is-on { background:#fff; color:var(--ink); border-style:solid; scale:1.08 }
+
+.table-audience { position:absolute; top:12px; right:12px; display:flex; align-items:center; z-index:8 }
+.table-audience > span { margin-left:-7px; border-radius:50%; box-shadow:0 0 0 2px #0b0b0b; display:grid }
+.audience-more { width:26px; height:26px; place-items:center; background:#222; color:var(--muted); font-size:11px }
+
+/* transmissao na mesa: posicao calculada pela CardTable, animada entre layouts */
+.table-card { position:absolute; perspective:1600px; touch-action:none; z-index:1;
+  transition:left .5s var(--spring),top .5s var(--spring),width .5s var(--spring),height .5s var(--spring),opacity .3s,filter .3s;
+  animation:table-card-in .6s var(--spring) both }
+.table-card.is-lifted { opacity:0 !important; pointer-events:none }
+.table-card.is-dim { filter:saturate(.75) brightness(.8) }
+.table-card.is-dim:hover { filter:none }
+.table-card.is-spot .table-face { box-shadow:0 0 0 1px #ffffff55 }
+.table-card-inner { position:relative; width:100%; height:100%; transform-style:preserve-3d; transform:rotateY(180deg); transition:transform .7s var(--spring) }
+.table-card.is-ready .table-card-inner { transform:none }
+.table-face { position:absolute; inset:0; backface-visibility:hidden; border-radius:var(--r-xl); overflow:hidden }
+.table-front { display:grid }
+.table-front > .stage { height:100% }
+.table-back { transform:rotateY(180deg); display:grid; place-content:center; justify-items:center; gap:10px; color:#ffffff8c; font-size:12px;
+  border:1px solid #ffffff38; background:repeating-linear-gradient(135deg,#ffffff05 0 10px,transparent 10px 20px),linear-gradient(150deg,#262626,#111 78%) }
+.back-mark { width:46px; height:46px; display:grid; place-items:center; border-radius:50%; border:1px solid #ffffff2a }
+.back-mark i { width:22px; height:22px; border-radius:50%; border:2px solid #ffffff22; border-top-color:#fff; animation:spin .9s linear infinite }
+.back-mark.is-failed { color:#fff; border-color:#ffffff66; animation:card-shake .5s ease both }
+.back-leave { margin-top:4px; padding:5px 10px; border-radius:8px; font-size:11px; color:var(--text); background:#ffffff12; border:1px solid #ffffff22 }
+.back-leave:hover { background:#ffffff22 }
+.table-card.is-leaving { animation:table-card-out .24s cubic-bezier(.5,0,.75,0) both; pointer-events:none }
+.hud-sep { width:1px; height:18px; background:#ffffff26; margin:0 2px; flex:none }
+@keyframes table-card-in { from { opacity:0; scale:.55; translate:0 35% } }
+@keyframes table-card-out { to { opacity:0; scale:.45; translate:0 60%; rotate:-6deg } }
+@keyframes card-shake { 0%,100%{translate:0} 20%{translate:-5px} 40%{translate:5px} 60%{translate:-3px} 80%{translate:3px} }
+
+/* avisos do chat fechado */
+.table-toasts { position:absolute; right:12px; bottom:12px; z-index:8; display:grid; gap:6px; justify-items:end; max-width:min(320px,70%) }
+.table-toast { display:flex; align-items:center; gap:6px; max-width:100%; padding:7px 11px; border-radius:12px; font-size:12px; color:var(--text);
+  background:rgb(20 20 20 / .92); border:1px solid var(--line-strong); box-shadow:0 10px 26px #0008; animation:toast-in .45s var(--spring) both }
+.table-toast b { font-weight:650; flex:none }
+.table-toast span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted) }
+@keyframes toast-in { from { opacity:0; translate:16px 0; scale:.94 } }
+
+/* mao */
+.hand { position:absolute; left:50%; bottom:10px; width:0; height:var(--hh); z-index:7; --spread:min(calc(var(--hw)*.92),calc((100cqw - 160px)/max(1,var(--n) - 1))) }
+.hand::before { content:""; position:absolute; left:-180px; right:-180px; top:-14px; bottom:-10px; border-radius:24px; border:1px dashed transparent; transition:border-color .2s,background .2s; pointer-events:none }
+.card-table.is-dragging .hand::before { border-color:#ffffff1c }
+.hand.is-target::before { border-color:#ffffffa0; background:#ffffff08 }
+.hand-card { position:absolute; bottom:0; left:calc(var(--hw)*-.5); width:var(--hw); height:var(--hh); padding:6px; display:flex; flex-direction:column; gap:5px;
+  border:1px solid #ffffff38; border-radius:14px; color:var(--text); background:linear-gradient(150deg,#303030,#131313 78%); box-shadow:0 8px 22px #0007;
+  touch-action:none; cursor:grab; user-select:none; transform-origin:center bottom;
+  translate:calc(var(--d)*var(--spread)) calc(var(--abs)*var(--abs)*3px + 6%); rotate:calc(var(--d)*4deg);
+  transition:translate .55s var(--spring),rotate .55s var(--spring),scale .4s var(--spring),box-shadow .2s,opacity .25s;
+  animation:hand-in .5s var(--spring) both }
+.hand:hover .hand-card { translate:calc(var(--d)*var(--spread)) calc(var(--abs)*var(--abs)*3px) }
+.hand-card:hover,.hand-card:focus-visible { translate:calc(var(--d)*var(--spread)) -10% !important; scale:1.08; z-index:20 !important; box-shadow:0 14px 34px #000a }
+.hand-card:active { cursor:grabbing }
+.hand-art { position:relative; flex:1; min-height:0; display:grid; place-items:center; overflow:hidden; border-radius:9px;
+  background:radial-gradient(ellipse at 20% 10%,#4a4a4a,transparent 66%),linear-gradient(135deg,#232323,#0e0e0e); border:1px solid #ffffff16 }
+.hand-art video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover }
+.hand-art .live-dot { position:absolute; top:6px; left:6px }
+.hand-caption { display:flex; align-items:center; gap:4px; min-width:0; padding:0 2px; font-size:11px; font-weight:600; color:var(--muted) }
+.hand-caption span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text) }
+.hand-card.is-own { border-style:dashed; border-color:#ffffff70 }
+.hand-add { color:var(--ink); background:linear-gradient(155deg,#fff,#d7d7d7); border-color:#ffffff80; cursor:pointer }
+.hand-add .hand-art { background:linear-gradient(140deg,#e4e4e4,#f6f6f6); border-color:#0002 }
+.hand-add .hand-caption { color:#333; justify-content:center }
+.hand-add.is-open { opacity:0; pointer-events:none }
+.hand-flying { position:fixed !important; z-index:1000; margin:0; translate:none !important; rotate:none !important; scale:1 !important;
+  transition:none !important; animation:none !important; pointer-events:none; box-shadow:0 22px 50px #000c !important; overflow:hidden }
+@keyframes hand-in { from { opacity:0; translate:calc(var(--d)*var(--spread)) 80% } }
+
+/* painel de transmitir: a carta + vira o painel e sobe */
+.share-sheet { position:absolute; left:50%; bottom:calc(var(--hh)*.5); translate:-50% 0; z-index:30; width:max-content; max-width:min(560px,calc(100cqw - 24px));
+  max-height:calc(100cqh - 40px); overflow:auto; scrollbar-width:none; padding:10px; border-radius:22px; transform-origin:0 0;
+  background:linear-gradient(150deg,#232323,#111 80%); border:1px solid #ffffff38; box-shadow:0 30px 70px -20px #000e }
+.share-sheet::before { content:""; position:absolute; inset:0; border-radius:inherit; background:linear-gradient(155deg,#fff,#d7d7d7);
+  pointer-events:none; animation:sheet-surface .42s ease-out both }
+.share-sheet.is-closing::before { animation:sheet-surface-back .3s ease-in both }
+.share-sheet > * { position:relative }
+.share-sheet-body { animation:sheet-body .35s .12s var(--out) both }
+.share-sheet.is-closing .share-sheet-body { animation:sheet-body-out .15s ease-in both }
+.share-sheet-head { display:flex; align-items:center; justify-content:space-between; padding:2px 4px 8px; font-size:13px; font-weight:650 }
+.share-sheet-head button { display:grid; place-items:center; width:28px; height:28px; border-radius:9px }
+.share-sheet-head button:hover { background:var(--hover) }
+.share-sheet .share-error { display:block; padding:8px 4px 0; color:var(--muted); font-size:12px }
+@keyframes sheet-surface { from { opacity:1 } to { opacity:0 } }
+@keyframes sheet-surface-back { from { opacity:0 } to { opacity:1 } }
+@keyframes sheet-body { from { opacity:0; translate:0 6px } }
+@keyframes sheet-body-out { to { opacity:0 } }
+
+@container (max-width:560px) {
+  .hand { --spread:min(calc(var(--hw)*.42),calc((100cqw - 150px)/max(1,var(--n) - 1))); left:calc(50% - 24px) }
+  .hand-card { rotate:calc(var(--d)*2.5deg) }
+}
+@media (hover:none) { .hand-card { translate:calc(var(--d)*var(--spread)) 6% } }
+@media (prefers-reduced-motion:reduce) { .table-card,.hand-card,.table-card-inner,.table-placeholder { animation:none; transition:none } }
+.chat-unread { position:absolute; top:-5px; right:-5px; min-width:17px; height:17px; padding:0 4px; display:grid; place-items:center; border-radius:9px;
+  background:#fff; color:var(--ink); font-size:10px; font-weight:700; animation:pop .35s var(--bounce) both }
+.with-table .chat-toggle { bottom:22px; right:22px }
+.head-slot { margin-left:auto; display:flex; align-items:center }
+.head-slot .table-audience { position:static; padding-left:7px }
+.head-slot .table-audience > span { box-shadow:0 0 0 2px var(--bg) }
+/* o painel real so mostrava as opcoes dentro de .island.is-open */
+.share-sheet .share-panel { width:min(520px,calc(100cqw - 48px)); min-width:min(400px,calc(100cqw - 48px)); padding:0 0 4px }
+.share-sheet .share-panel > * { opacity:1; translate:0 0; filter:none; transition-delay:calc(var(--i,0) * 30ms) }
+.share-sheet:not(.is-closing) .share-panel > * { animation:sheet-body .35s var(--out) both }
+.share-sheet .share-panel > :nth-child(2) { animation-delay:.15s } .share-sheet .share-panel > :nth-child(3) { animation-delay:.18s }
+.share-sheet .share-panel > :nth-child(4) { animation-delay:.21s } .share-sheet .share-panel > :nth-child(5) { animation-delay:.24s }
+.table-felt > .table-audience { top:auto; bottom:12px; left:12px; right:auto }
+/* transmissao pequena (faixa do destaque, grade cheia): so os botoes essenciais na barra */
+.table-card { container-type:size }
+@container (max-width:420px) { .table-card .stage-hud .hud-chip.mono,.table-card .hud-volume input,.table-card .hud-vol-pct,.table-card .hud-sep { display:none } }
+@container (max-width:300px) { .table-card .stage-hud .hud-chip { display:none } .table-card .stage-hud { top:8px; left:8px; right:8px; gap:4px } }

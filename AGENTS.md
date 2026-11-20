@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-19, versao 1.7.3 (botao de atualizacao clicavel).
+Ultima atualizacao: 2026-11-19, versao 1.8.0 (mesa de cartas na sala).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -242,6 +242,25 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.8.0 — mesa de cartas na sala (2026-11-19):
+- `CardTable.jsx` + `table.css` substituem StreamGrid, a coluna de avatares, a previa flutuante e a ilha.
+  Mao (base): uma carta por pessoa transmitindo fora da mesa + carta "Transmitir". Mesa: transmissoes em
+  posicoes calculadas (`gridLayout` maximiza o maior 16:9; `spotLayout` = destaque grande + faixa lateral
+  ou inferior, demais esmaecidas). Arrastar mostra a posicao tracejada e o chip "Destaque"; segurar uma
+  transmissao (260 ms ou arrastar) a transforma em carta: soltar na mao para de ver, na mesa reposiciona.
+  A carta pousa virada (verso = conectando) e vira com o video; sem video em 15 s o verso mostra "sem conexao".
+- A carta "Transmitir" cresce ate virar o painel (`ShareSheet`, SharePanel real dentro) e encolhe ao fechar.
+  Ao vivo, ajustes/parar ficam na barra do Stage (`tools` prop) da propria transmissao.
+- Plateia via portal em `#call-head-slot` (barra do canal, canto superior direito). Chat fechado: mensagens
+  novas aparecem 6 s sobre a mesa e contam no botao do chat.
+- Lateral: `ChannelCrowd` (mini leque de cartas de quem transmite + avatares de quem assiste) e `CallCard`
+  no rodape (pulsa ao vivo, desligar).
+- Mesa de teste: `npm run dev` e abrir `#/mesa-teste` (TableLab.jsx, so em DEV, sem login): transmissoes
+  simuladas por canvas, atraso, falha, espectadores, mensagens. Paginas com Supabase simulado em
+  `release/table-real.html` e `release/side180.html` (fora do git).
+- Nao verificado: transmissao real entre dois PCs com a mesa nova. O destaque e so visual (a rede recebe
+  as demais na mesma qualidade).
 
 1.7.3 — botao de atualizacao clicavel (2026-11-19):
 - O Electron aplica `-webkit-app-region` na ordem do documento: um `no-drag` que vem ANTES de uma barra

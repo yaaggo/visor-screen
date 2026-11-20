@@ -2,8 +2,19 @@ import { useEffect, useState } from 'react'
 import { supabase } from './lib/supabase.js'
 import Login from './components/Login.jsx'
 import Shell from './components/Shell.jsx'
+import { lazy, Suspense } from 'react'
+
+// Mesa de teste das cartas: so no `npm run dev`, em #/mesa-teste (sem login).
+const TableLab = import.meta.env.DEV ? lazy(() => import('./components/TableLab.jsx')) : null
 
 export default function App() {
+  const [lab, setLab] = useState(() => !!TableLab && location.hash === '#/mesa-teste')
+  useEffect(() => {
+    if (!TableLab) return
+    const on = () => setLab(location.hash === '#/mesa-teste')
+    addEventListener('hashchange', on)
+    return () => removeEventListener('hashchange', on)
+  }, [])
   const [state, setState] = useState({ loading: true, session: null, profile: null })
 
   const loadProfile = async (session) => {
@@ -25,6 +36,7 @@ export default function App() {
     return () => sub.subscription.unsubscribe()
   }, [])
 
+  if (lab) return <Suspense fallback={null}><TableLab/></Suspense>
   if (state.loading) return <div className="boot"><span className="boot-dot" /></div>
   if (!state.profile) return <Login onReady={(session, profile) => setState({ loading: false, session, profile })} />
   return <Shell profile={state.profile} />

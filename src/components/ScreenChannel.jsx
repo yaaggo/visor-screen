@@ -9,7 +9,7 @@ import { desktop } from '../lib/env.js'
 import { captureDesktop, captureDevice, captureWeb } from '../lib/sources.js'
 import { Avatar, IconButton } from './ui.jsx'
 import SharePanel, { exeKey, pref, useShareConfig } from './SharePanel.jsx'
-import StreamGrid from './StreamGrid.jsx'
+import CardTable from './CardTable.jsx'
 import TextChannel from './TextChannel.jsx'
 
 let selfPid = 0
@@ -47,7 +47,6 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
   const captureRef = useRef(null)
   const starting = useRef(false)
   const [s, setS] = useState({ peers: [], sharing: false, local: null, remote: null, watching: null, viewers: 0, preset: '1080p60', bitrate: 0, uplink: null, stats: null, remoteAudio: false })
-  const [peopleOpen, setPeopleOpen] = useState(true)
   useEffect(() => { onConnection?.(Boolean(s.connected)) }, [s.connected, onConnection])
   useEffect(() => {
     if (!visible) { setHover(null); setMenu(null) }
@@ -56,10 +55,28 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
   const hoverTimer = useRef(null)
   const [menu, setMenu] = useState(null)
   const [chat, setChat] = useState(() => pref.get('visor.chatOpen', true))
+  const [toasts, setToasts] = useState([])
+  const [unread, setUnread] = useState(0)
+  // Chat fechado: mensagens novas aparecem por alguns segundos sobre a mesa e contam no botao do chat.
+  useEffect(() => {
+    if (chat || !chatChannel || !visible) return
+    const sub = supabase.channel(`chat-peek:${chatChannel.id}:${Math.random().toString(36).slice(2)}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${chatChannel.id}` }, ({ new: m }) => {
+        if (m.author_id === profile.id) return
+        setUnread(n => n + 1)
+        setToasts(t => [...t.slice(-2), { id: m.id, name: m.author_name, body: m.body }])
+        setTimeout(() => setToasts(t => t.filter(x => x.id !== m.id)), 6000)
+      }).subscribe()
+    return () => { supabase.removeChannel(sub) }
+  }, [chat, chatChannel?.id, visible, profile.id])
+  useEffect(() => { if (chat) { setUnread(0); setToasts([]) } }, [chat])
   const [cfg, update] = useShareConfig()
   const [error, setError] = useState(false)
   const [nativeCapture, setNativeCapture] = useState(false)
-  const [panelOpen, setPanelOpen] = useState(false)
+  const [panelOpen, setPanelOpen] = useState(false) // painel de transmitir (a carta + aberta)
+  const stopShare = () => { roomRef.current.stopShare(); captureRef.current = null }
+  const [ownOnTable, setOwnOnTable] = useState(true)
+  const placedAt = useRef(new Map())
   const needsAudioApps = cfg.kind !== 'device' && (panelOpen || (s.sharing && cfg.audioMode === 'all' && cfg.exclude.length > 0))
   const apps = useAudioApps(needsAudioApps)
   const targetKey = JSON.stringify(audioTargets(cfg, apps))
@@ -117,6 +134,8 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
       if (room.inputs.get(hover.id)?.preview) room.stopWatching(hover.id)
     }
   }, [hover])
+
+  useEffect(() => { if (s.sharing) setOwnOnTable(true) }, [s.sharing])
 
   // Desktop: reduz a disputa por CPU/GPU enquanto transmite.
   useEffect(() => {
@@ -176,37 +195,13 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
 
   const inputs = s.inputs ?? []
   const tiles = inputs.filter(input => !input.preview)
-  if (s.sharing) tiles.unshift({ id: endpointId, stream: s.local })
+  if (s.sharing && ownOnTable) tiles.unshift({ id: endpointId, stream: s.local })
   const toggle = (id, peerHint = null) => {
     const room = roomRef.current
     if (room.inputs.has(id) && !room.inputs.get(id).preview) room.stopWatching(id)
     else room.watch(id, false, peerHint)
     setHover(null)
     setMenu(null)
-  }
-  const person = (p, compact) => {
-    const own = p.id === endpointId
-    const active = tiles.some(tile => tile.id === p.id)
-    return <button key={p.id} className={'participant' + (p.sharing ? ' live' : '')} aria-label={p.name} title={p.name}
-      aria-pressed={p.sharing ? active : undefined}
-      onMouseEnter={e => {
-        clearTimeout(hoverTimer.current)
-        if (!p.sharing || active) return
-        const rect = e.currentTarget.getBoundingClientRect()
-        setHover({id:p.id, peer:p, left:Math.min(innerWidth-212, Math.max(8,rect.left)), top:Math.max(8,rect.top-126)})
-      }} onMouseLeave={hidePreview}
-      onClick={() => { if (p.sharing && !own) { if (!active) toggle(p.id, p); else setHover(null) } }}
-      onContextMenu={e => {
-        if (!p.sharing || own) return
-        e.preventDefault()
-        setHover(null)
-        setMenu({ id:p.id, peer:p, x:Math.min(innerWidth-160,e.clientX), y:Math.min(innerHeight-48,e.clientY) })
-      }}>
-      <span className="participant-face"><Avatar id={p.profileId ?? p.id} revision={own ? photo : p.photo} name={p.name} size={compact ? 52 : 60}/>
-        <span className="person-device">{(own ? deviceKind : p.device) === 'mobile' ? <Smartphone size={9} aria-label="Celular"/> : <Monitor size={9} aria-label="Computador"/>}</span>
-        {p.sharing && <i className="live-dot"/>}</span>
-      <span className="participant-meta"><span>{p.name}</span>{(own ? deviceKind : p.device) === 'mobile' ? <Smartphone size={11} className="device-icon" aria-label="Celular"/> : <Monitor size={11} className="device-icon" aria-label="Computador"/>}</span>{compact && !!p.watching?.length && <Eye size={12} aria-label="Assistindo"/>}
-    </button>
   }
   // Unifica peers da sala com visitors do diretorio para que participantes nunca sumam durante reconexao ou entrada
   const peerMap = new Map()
@@ -221,46 +216,53 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
   }
   const allPeers = [...peerMap.values()]
 
-  const hoverPeer = allPeers.find(p => p.id === hover?.id && p.sharing)
-  const preview = hoverPeer && (hoverPeer.id === endpointId ? s.local : inputs.find(v => v.id === hoverPeer.id)?.stream)
 
   return (
     <div className={`screen ${chat && chatChannel ? 'with-chat' : ''}`}>
-      {hoverPeer && createPortal(<button className="stream-hover" onMouseEnter={() => clearTimeout(hoverTimer.current)} onMouseLeave={hidePreview} onClick={() => { if (hoverPeer.id !== endpointId) roomRef.current.watch(hoverPeer.id, false, hoverPeer); setHover(null) }} style={{left:hover.left, top:hover.top}}>
-        <video autoPlay muted playsInline ref={node => { if (node && node.srcObject !== preview) node.srcObject = preview ?? null }}/>
-        <small>{hoverPeer.name}</small>
-      </button>, document.body)}
-      {menu && createPortal(<button autoFocus className="stream-menu" style={{left:menu.x,top:menu.y}} onPointerDown={e => e.stopPropagation()}
-        onClick={() => toggle(menu.id, menu.peer)}>{tiles.some(v => v.id === menu.id) ? 'Parar de assistir' : 'Assistir'}</button>,document.body)}
-      <div className="stage-wrap">
-        {tiles.length ? <StreamGrid count={tiles.length}>
-          {tiles.map(tile => <Stage key={tile.id} stream={tile.stream} local={tile.id === endpointId} stats={tile.stats}
+      <div className="stage-wrap with-table">
+        <CardTable
+          tiles={tiles.map(tile => {
+            const peer = allPeers.find(p => p.id === tile.id)
+            if (!placedAt.current.has(tile.id)) placedAt.current.set(tile.id, Date.now())
+            return { ...tile, own: tile.id === endpointId, name: tile.id === endpointId ? 'você' : peer?.name ?? '', since: placedAt.current.get(tile.id) }
+          })}
+          hand={[
+            ...(s.sharing && !ownOnTable ? [{ id: endpointId, own: true, name: profile.username, profileId: profile.id, photo, device: deviceKind }] : []),
+            ...allPeers.filter(p => p.sharing && p.id !== endpointId && !tiles.some(t => t.id === p.id)).map(p => ({
+              ...p, peek: hover?.id === p.id ? inputs.find(v => v.id === p.id)?.stream ?? null : null,
+            })),
+          ]}
+          visible={visible}
+          audience={allPeers.filter(p => !p.sharing)}
+          toasts={toasts}
+          onToast={() => { setChat(true); pref.set('visor.chatOpen', true) }}
+          showAdd={!s.sharing}
+          onAdd={() => { setError(false); setPanelOpen(true) }}
+          shareOpen={panelOpen}
+          shareTitle={s.sharing ? 'Ajustes' : 'Transmitir'}
+          onShareClose={() => setPanelOpen(false)}
+          onShareSettings={() => setPanelOpen(true)}
+          onStopShare={stopShare}
+          shareContent={<>
+            <SharePanel cfg={cfg} update={update} live={s.sharing} open={panelOpen} peers={s.peers} uplink={s.uplink} apps={apps}
+              nativeCapture={nativeCapture} onStart={async () => { setError(false); if (await start()) setPanelOpen(false) }}/>
+            {error && <span role="status" className="share-error">{error}</span>}
+          </>}
+          onPeek={card => { clearTimeout(hoverTimer.current); setHover(card ? { id: card.id, peer: card } : null) }}
+          onPlace={id => {
+            placedAt.current.set(id, Date.now())
+            if (id === endpointId) setOwnOnTable(true)
+            else roomRef.current.watch(id, false, allPeers.find(p => p.id === id))
+            setHover(null)
+          }}
+          onReturn={id => {
+            placedAt.current.delete(id)
+            if (id === endpointId) setOwnOnTable(false)
+            else roomRef.current.stopWatching(id)
+          }}
+          renderStage={(tile, tools) => <Stage tools={tools} stream={tile.stream} local={tile.own} stats={tile.stats}
             sendStats={s.sendStats} captureEngine={s.captureEngine} captureStats={s.captureStats}
-            hasAudio={tile.id !== endpointId && !!tile.stream?.getAudioTracks().length}
-            watchingName={allPeers.find(p => p.id === tile.id)?.name}/>)}
-        </StreamGrid> : <div className="idle-frame" aria-label="Sem transmissão" />}
-
-        <aside className={'people-drawer' + (peopleOpen ? ' is-open' : '')} aria-label="Participantes">
-          <button className="people-toggle" aria-label={peopleOpen ? 'Ocultar participantes' : 'Mostrar participantes'}
-            aria-expanded={peopleOpen} onClick={() => setPeopleOpen(!peopleOpen)}><ChevronRight size={15}/></button>
-          <div className="people-track" inert={!peopleOpen}>{allPeers.map(p => person(p,true))}</div>
-        </aside>
-        <Island
-          s={s}
-          cfg={cfg}
-          apps={apps}
-          onOpenChange={setPanelOpen}
-          update={update}
-          error={error}
-          nativeCapture={nativeCapture}
-          onStart={() => {
-            setError(false)
-            return start()
-          }}
-          onStop={() => {
-            roomRef.current.stopShare()
-            captureRef.current = null
-          }}
+            hasAudio={!tile.own && !!tile.stream?.getAudioTracks().length} watchingName={tile.name}/>}
         />
 
         {chatChannel && (
@@ -274,6 +276,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
             }}
           >
             <MessageSquare size={17} fill={chat ? 'currentColor' : 'none'}/>
+            {!chat && unread > 0 && <span className="chat-unread">{unread > 9 ? '9+' : unread}</span>}
           </IconButton>
         )}
       </div>
@@ -286,7 +289,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
   )
 }
 
-function Stage({ stream, local, stats, sendStats, captureEngine, captureStats, watchingName, hasAudio }) {
+export function Stage({ tools, stream, local, stats, sendStats, captureEngine, captureStats, watchingName, hasAudio }) {
   const [diag, setDiag] = useState(() => pref.get('visor.diag', false))
   const video = useRef(null)
   const box = useRef(null)
@@ -451,6 +454,7 @@ function Stage({ stream, local, stats, sendStats, captureEngine, captureStats, w
           <IconButton label={full ? 'Sair da tela cheia' : 'Tela cheia'} className="hud-btn" onClick={toggleFull} magnetic={false}>
             {full ? <Minimize size={15} strokeWidth={1.75} /> : <Maximize size={15} strokeWidth={1.75} />}
           </IconButton>
+          {tools}
         </div>
       )}
     </div>
@@ -553,77 +557,3 @@ function Diagnostics({ local, stats, sendStats, captureEngine, captureStats }) {
 }
 
 // Ilha que se expande do botao de transmitir (conceito "Morph island")
-function Island({ s, cfg, apps, onOpenChange, update, error, nativeCapture, onStart, onStop }) {
-  const [open, setOpen] = useState(false)
-  useEffect(() => onOpenChange(open), [open, onOpenChange])
-  const ref = useRef(null)
-  const preset = getPreset(s.sharing ? s.preset : cfg.presetId)
-
-  useEffect(() => {
-    if (!open) return
-    const onDown = (e) => !ref.current?.contains(e.target) && setOpen(false)
-    const onKey = (e) => e.key === 'Escape' && setOpen(false)
-    addEventListener('pointerdown', onDown)
-    addEventListener('keydown', onKey)
-    return () => {
-      removeEventListener('pointerdown', onDown)
-      removeEventListener('keydown', onKey)
-    }
-  }, [open])
-
-  return (
-    <div ref={ref} className={`island ${open ? 'is-open' : ''} ${s.sharing ? 'is-live' : ''} ${error ? 'shake' : ''}`}>
-      <div className="island-bar">
-        {s.sharing ? (
-          <>
-            <span className="island-live">
-              <span className="live-dot" />
-              <span className="mono">
-                {preset.res}·{preset.fps}·{fmtMbps(s.bitrate)}
-              </span>
-            </span>
-            <span className="island-count" data-tip="Assistindo">
-              <Eye size={14} strokeWidth={1.75} />
-              <span className="mono">{s.viewers}</span>
-            </span>
-            <IconButton label="Ajustes" active={open} onClick={() => setOpen((v) => !v)} magnetic={false}>
-              <MonitorUp size={16} strokeWidth={1.75} />
-            </IconButton>
-            <button type="button" className="stop-btn" aria-label="Parar" data-tip="Parar" onClick={onStop}>
-              <Square size={12} fill="currentColor" />
-            </button>
-          </>
-        ) : (
-          <>
-            <span className="island-count" data-tip="Na sala">
-              <Eye size={14} strokeWidth={1.75} />
-              <span className="mono">{s.peers.length}</span>
-            </span>
-            <button type="button" className="share-btn" aria-label="Transmitir" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-              <MonitorUp size={17} strokeWidth={1.75} />
-            </button>
-          </>
-        )}
-      </div>
-
-      <div className="island-panel" inert={!open}>
-        <div className="island-panel-inner">
-          <SharePanel
-            cfg={cfg}
-            update={update}
-            live={s.sharing}
-            open={open}
-            peers={s.peers}
-            uplink={s.uplink}
-            apps={apps}
-            nativeCapture={nativeCapture}
-            onStart={async () => {
-              if (await onStart()) setOpen(false)
-            }}
-          />
-          {error && <span role="status" className="share-error">{error}</span>}
-        </div>
-      </div>
-    </div>
-  )
-}
