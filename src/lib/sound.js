@@ -164,6 +164,24 @@ export const SOUNDS = {
       tone(t + 0.08, { type: 'triangle', from: 587.3, attack: 0.004, peak: 0.04, release: 0.25 })
     },
   },
+  enter: {
+    label: 'Entrar na mesa', use: 'Você entrou num canal de transmissão (sua carta pousou na mesa)',
+    play(t) {
+      noise(t, { type: 'lowpass', from: 1100, to: 380, sweep: 0.07, attack: 0.002, peak: 0.15, release: 0.08 })
+      tone(t, { from: 140, to: 90, glide: 0.1, attack: 0.002, peak: 0.1, release: 0.14 })
+      noise(t + 0.08, { from: 700, to: 3000, sweep: 0.45, q: 0.7, attack: 0.18, peak: 0.035, release: 0.4, pan: -0.3, panTo: 0.3 })
+      tone(t + 0.12, { from: 587.3, attack: 0.02, peak: 0.045, release: 0.6, pan: -0.2 })
+      tone(t + 0.22, { from: 880, attack: 0.02, peak: 0.04, release: 0.8, pan: 0.2 })
+    },
+  },
+  exit: {
+    label: 'Sair da mesa', use: 'Você saiu do canal e voltou ao tabuleiro',
+    play(t) {
+      noise(t, { from: 3000, to: 600, sweep: 0.4, q: 0.7, attack: 0.05, peak: 0.04, release: 0.35, pan: 0.3, panTo: -0.3 })
+      tone(t + 0.02, { from: 880, attack: 0.02, peak: 0.035, release: 0.35, pan: 0.2 })
+      tone(t + 0.14, { from: 587.3, attack: 0.02, peak: 0.035, release: 0.55, pan: -0.2 })
+    },
+  },
   open: {
     label: 'Abrir painel', use: 'A carta Transmitir vira o painel de opções',
     play(t) { noise(t, { from: 500, to: 2600, sweep: 0.24, q: 0.9, attack: 0.08, peak: 0.06, release: 0.18 }) },

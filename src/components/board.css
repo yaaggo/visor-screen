@@ -1,0 +1,79 @@
+/* Tabuleiro do servidor (ServerBoard) */
+.server-board { position:relative; height:100%; display:grid; grid-template-rows:auto 1fr auto; overflow:hidden; container-type:size;
+  background:radial-gradient(ellipse at 50% 45%,#151515 0%,#0b0b0b 62%,#090909) }
+.board-bar { display:flex; align-items:center; gap:14px; padding:14px 18px 6px; position:relative; z-index:5 }
+.is-desktop .board-bar { -webkit-app-region:drag; padding-right:150px }
+.is-desktop .board-bar button,.is-desktop .board-bar .sidebar-menu,.is-desktop .board-bar input { -webkit-app-region:no-drag }
+.board-bar .server-header { display:flex; align-items:center; gap:12px; padding:0; border:0 }
+.board-bar .server-header .server-cover { width:46px; height:46px; border-radius:13px; flex:none }
+.board-bar .server-header h1 { margin:0; padding-right:0; font-size:17px }
+.board-bar .server-options { position:static }
+.board-bar .server-header .sidebar-menu { left:0; right:auto; width:220px; top:calc(100% + 8px) }
+.board-meta { color:var(--muted); font-size:12px }
+.board-bar-end { margin-left:auto; display:flex; align-items:center }
+.board-bar-end .profile-menu .sidebar-menu { top:calc(100% + 8px); bottom:auto }
+
+.board-tables { align-self:center; justify-self:center; width:min(100%,1180px); padding:10px clamp(16px,4vw,48px);
+  display:grid; gap:clamp(18px,3vw,36px); grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr)); justify-items:center; align-items:center;
+  max-height:100%; overflow:auto; scrollbar-width:none }
+.board-table { --tw:min(100%,360px); width:var(--tw); display:grid; gap:12px; justify-items:center; color:var(--text);
+  animation:table-pop .6s calc(var(--i) * 60ms) var(--spring) both; transition:scale .45s var(--spring),opacity .3s,filter .3s }
+.board-table .table-surface { position:relative; width:100%; aspect-ratio:16/10; border-radius:999px; display:grid; place-items:center;
+  background:radial-gradient(ellipse at 50% 40%,#2a2a2a,#161616 60%,#101010); border:1px solid #ffffff2e;
+  box-shadow:inset 0 2px 0 #ffffff12,inset 0 -18px 40px #0008,0 24px 50px -24px #000; transition:box-shadow .3s,border-color .3s,translate .45s var(--spring) }
+.table-rim { position:absolute; inset:11px; border-radius:inherit; border:1px dashed #ffffff1f; pointer-events:none; transition:border-color .3s }
+.board-table:hover .table-surface,.board-table:focus-visible .table-surface { translate:0 -5px; border-color:#ffffff55; box-shadow:inset 0 2px 0 #ffffff18,inset 0 -18px 40px #0008,0 30px 60px -24px #000 }
+.board-table.is-near .table-surface { border-color:#fff; box-shadow:inset 0 0 0 1px #ffffff66,inset 0 0 60px #ffffff12,0 30px 60px -24px #000 }
+.board-table.is-near .table-rim { border-color:#ffffffa0 }
+.board-table.is-mine .table-surface { border-color:#ffffff70 }
+.table-label { display:grid; justify-items:center; gap:2px }
+.table-label b { font-size:15px; font-weight:650 }
+.table-label small { color:var(--muted); font-size:12px }
+
+.table-hand { position:relative; width:calc(44px + (var(--n) - 1)*26px); height:60px }
+.table-card-mini { position:absolute; left:50%; top:0; width:44px; height:60px; margin-left:-22px; display:grid; place-items:center; border-radius:8px;
+  background:linear-gradient(150deg,#3a3a3a,#161616); border:1px solid #ffffff45; box-shadow:0 6px 14px #000a; transform-origin:center 140%;
+  translate:calc(var(--d)*24px) 0; rotate:calc(var(--d)*9deg); transition:translate .45s var(--spring),rotate .45s var(--spring) }
+.board-table:hover .table-card-mini { translate:calc(var(--d)*30px) -4px; rotate:calc(var(--d)*12deg) }
+.table-card-mini .live-dot { position:absolute; top:5px; left:5px; width:5px; height:5px }
+.table-empty { width:44px; height:60px; border-radius:8px; border:1px dashed #ffffff22 }
+.table-seats { position:absolute; left:50%; bottom:-12px; display:flex; translate:-50% 0 }
+.table-seats > span { margin-left:-6px; display:grid; border-radius:50%; box-shadow:0 0 0 2px #101010; animation:seat-in .4s calc(var(--k) * 50ms + .2s) var(--spring) both }
+.table-seats > span:first-child { margin-left:0 }
+
+.board-table.is-new .table-surface { background:transparent; border:1px dashed #ffffff30; box-shadow:none; color:#ffffff70 }
+.board-table.is-new:hover .table-surface { color:#fff; border-color:#ffffff80 }
+.table-form { display:flex !important; align-items:center; justify-content:center; gap:8px; padding:0 28px }
+.table-form input { flex:1; min-width:0; background:#101010; border:1px solid var(--line-strong); border-radius:10px; padding:8px 10px; color:var(--text); font-size:13px }
+.table-form button { display:grid; place-items:center; width:34px; height:34px; border-radius:10px; background:#fff; color:var(--ink) }
+.table-form button:disabled { opacity:.4 }
+
+.board-seat { position:relative; display:flex; align-items:flex-end; justify-content:center; padding:0 18px 18px; min-height:150px; z-index:4 }
+.board-call { position:absolute; left:18px; bottom:18px; width:min(240px,40%); display:flex }
+.board-call .call-card { margin-right:0 }
+.seat-card { width:96px; height:128px; padding:7px; display:flex; flex-direction:column; gap:6px; border-radius:15px; touch-action:none; cursor:grab; user-select:none;
+  color:var(--ink); background:linear-gradient(155deg,#fff,#d4d4d4); border:1px solid #fff; box-shadow:0 18px 40px -14px #000, 0 0 0 6px #ffffff08;
+  transition:translate .45s var(--spring),rotate .45s var(--spring),box-shadow .3s; animation:seat-card-in .7s .25s var(--spring) both }
+.seat-card:hover { translate:0 -8px; rotate:-3deg; box-shadow:0 24px 46px -14px #000, 0 0 0 8px #ffffff10 }
+.seat-card:active { cursor:grabbing }
+.seat-art { flex:1; display:grid; place-items:center; border-radius:10px; background:linear-gradient(140deg,#e2e2e2,#f7f7f7); border:1px solid #0002 }
+.seat-name { font-size:12px; font-weight:650; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.board-flying { position:fixed !important; z-index:1000; margin:0; translate:none !important; rotate:none !important; transition:none !important; animation:none !important; pointer-events:none;
+  box-shadow:0 26px 60px #000c !important }
+
+/* escolher uma mesa: as demais recuam, a escolhida fica */
+.server-board.is-leaving .board-table:not(.is-chosen),.server-board.is-leaving .board-bar,.server-board.is-leaving .board-call { opacity:0; scale:.92; filter:blur(2px); transition:opacity .35s,scale .45s var(--spring),filter .35s }
+.board-zoom { position:fixed; z-index:900; pointer-events:none; border:1px solid #ffffff3a;
+  background:radial-gradient(ellipse at 50% 40%,#202020,#121212 60%,#0d0d0d); box-shadow:0 30px 80px -20px #000 }
+
+.board-menu { position:fixed; z-index:200; padding:5px; border-radius:12px; background:var(--raised); border:1px solid var(--line-strong); box-shadow:0 10px 26px #0008; animation:rise .2s var(--out) }
+.board-menu button { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:8px; font-size:13px; color:var(--text) }
+.board-menu button:hover { background:var(--hover) }
+
+@keyframes table-pop { from { opacity:0; scale:.85; translate:0 24px } }
+@keyframes seat-in { from { opacity:0; scale:.4 } }
+@keyframes seat-card-in { from { opacity:0; translate:0 60px; rotate:8deg } }
+@container (max-height:560px) { .board-seat { min-height:110px } .seat-card { width:72px; height:96px } }
+@container (max-width:620px) { .board-call { position:static; width:auto; flex:1; margin-right:12px } .board-meta { display:none } }
+@media (prefers-reduced-motion:reduce) { .board-table,.seat-card,.table-seats > span { animation:none } }
+.board-bar .server-header h1 { order:1 } .board-bar .server-options { order:2 } .board-bar .server-header .sidebar-menu { order:3 }

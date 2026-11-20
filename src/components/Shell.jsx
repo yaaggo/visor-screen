@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArrowRight, MoreHorizontal, Pencil, Cast, ImagePlus, LogOut, MessageSquare, Monitor, Plus, PhoneOff, Radio, Smartphone, Trash2, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import SoundToggle from './SoundToggle.jsx'
+import ServerBoard from './ServerBoard.jsx'
+import { play } from '../lib/sound.js'
 import { supabase } from '../lib/supabase.js'
 import { deviceKind, endpointId, presencePublisher } from '../lib/presence.js'
 import { go, useRoute } from '../lib/route.js'
@@ -296,21 +298,38 @@ export default function Shell({ profile }) {
   }
 
   function disconnect() {
-    if (channel) go(serverId)
+    if (channel) go(serverId) // o tabuleiro toca a volta (sala encolhe ate a mesa)
+    else play('exit')
     setCall(null)
   }
+  // Som ao entrar numa call (o tabuleiro ja toca o seu durante a animacao da mesa).
+  const boardJoin = useRef(false)
+  const lastCall = useRef(null)
+  useEffect(() => {
+    if (call && call.id !== lastCall.current && !boardJoin.current) play('enter')
+    boardJoin.current = false
+    lastCall.current = call?.id ?? null
+  }, [call?.id])
+  // Volta ao tabuleiro: lembra de qual mesa voce saiu para a animacao de retorno.
+  const prevRoute = useRef({ serverId, channelId })
+  const [returning, setReturning] = useState(null)
+  useLayoutEffect(() => {
+    const prev = prevRoute.current
+    setReturning(prev.serverId === serverId && prev.channelId && !channelId ? prev.channelId : null)
+    prevRoute.current = { serverId, channelId }
+  }, [serverId, channelId])
   const callVisible = Boolean(call && call.id === channel?.id)
   const callLabel = call ? (connected ? 'Conectado' : 'Conectando…') : 'Desconectado'
 
   return (
-    <div className={`shell ${!serverId ? 'in-hub' : ''} ${collapsed ? 'is-collapsed' : ''}`}>
+    <div className={`shell ${!serverId ? 'in-hub' : ''} ${server && !channel ? 'is-board' : ''} ${collapsed ? 'is-collapsed' : ''}`}>
       <UpdateButton/>
       <Tooltips/>
       {serverPhoto && <ProfilePhoto server={serverPhoto} saved={revision =>
         setServers(rows => rows.map(row => row.id === serverPhoto.id ? {...row,photo_revision:revision} : row))}
         close={() => setServerPhoto(null)}/>}
       {editing && <ProfilePhoto profile={profile} saved={setPhoto} close={() => setEditing(false)} />}
-      {server && <aside className="sidebar" aria-label="Canais">
+      {server && channel && <aside className="sidebar" aria-label="Canais">
 
             <ServerHeader key={server.id} server={server} owner={isOwner} back={e=>openServer(server,e.currentTarget)}
               editPhoto={()=>setServerPhoto(server)} rename={renameServer} createChannel={createChannel}/>
@@ -344,7 +363,7 @@ export default function Shell({ profile }) {
       </aside>}
 
       <main className="main">
-        {server && <header className="main-head">
+        {server && channel && <header className="main-head">
           <IconButton label={collapsed ? 'Expandir' : 'Recolher'} onClick={() => setCollapsed((v) => !v)}>
             {collapsed ? <PanelLeftOpen size={16} strokeWidth={1.75} /> : <PanelLeftClose size={16} strokeWidth={1.75} />}
           </IconButton>
@@ -358,8 +377,17 @@ export default function Shell({ profile }) {
         </header>}
         <div className="main-body">
           {!serverId && servers && <ServerHub ownerId={profile.id} onDelete={deleteServer} returningId={origin.current?.id} servers={servers} onSubmit={submitServer} onOpen={openServer} editProfile={() => setEditing(true)} logout={logout}/>}
-          {server && !channel && <div className="channel-landing">{channels?.filter(c => c.kind === 'screen' && c.server_id === serverId).map(c =>
-            <button key={c.id} onClick={() => go(serverId,c.id)}><Cast size={22}/>{c.name}</button>)}</div>}
+          {server && !channel && <ServerBoard key={server.id} server={server} owner={isOwner} returning={returning}
+            channels={channels?.filter(c => c.kind === 'screen' && c.server_id === serverId) ?? []}
+            people={listedVisitors} me={{ id: endpointId, profileId: profile.id, name: profile.username, photo }}
+            header={<ServerHeader server={server} owner={isOwner} back={e => openServer(server, e.currentTarget)}
+              editPhoto={() => setServerPhoto(server)} rename={renameServer} createChannel={createChannel}/>}
+            profileMenu={<ProfileMenu profile={profile} photo={photo} edit={() => setEditing(true)} logout={logout}/>}
+            callCard={call && call.server_id !== serverId ? <CallCard call={call} server={servers?.find(x => x.id === call.server_id)} connected={connected}
+              live={visitors.some(v => (v.endpointId ?? v.id) === endpointId && v.sharing)} here={false} unread={unread}
+              onOpen={() => go(call.server_id, call.id)} onLeave={disconnect}/> : null}
+            onJoin={c => { boardJoin.current = call?.id !== c.id; go(serverId, c.id) }}
+            onCreate={createChannel} onDelete={deleteChannel}/>}
           {call && <div className="call-session" hidden={!callVisible}>
             <ScreenChannel key={call.id} channel={call} profile={profile} chatChannel={call} visible={callVisible} onUnread={setUnread}
               onConnection={setConnected} reportMember={reportMember} visitors={visitors.filter(v => v.channel === call.id)} photo={photo}/>

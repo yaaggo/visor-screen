@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-19, versao 1.9.0 (zoom, sons e avisos de mensagens).
+Ultima atualizacao: 2026-11-19, versao 1.10.0 (tabuleiro do servidor).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -242,6 +242,16 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.10.0 — tabuleiro do servidor (2026-11-19):
+- Servidor sem canal aberto = `ServerBoard` (board.css): cada canal de transmissao e uma mesa (cartas de quem
+  transmite, plateia nas bordas, "vazia"), "Nova mesa" para o dono (botao direito apaga) e a sua carta embaixo.
+  Jogar a carta numa mesa (ou clicar) pousa a carta, as outras mesas recuam e a mesa se expande ate a sala.
+  Ao desligar, o Shell guarda a mesa de onde voce saiu (`returning`) e a sala encolhe ate ela com a carta voltando.
+- A lateral e a barra do canal so existem com um canal aberto (`.shell.is-board` = coluna 0). A capa do
+  servidor no tabuleiro usa `rail-item is-active`, alvo do voo carta -> capa vindo do deck.
+- Sons novos `enter`/`exit` (entrar e sair da call), tambem em `#/sons`. Call em outro servidor aparece como
+  CallCard no canto do tabuleiro.
 
 1.9.0 — zoom, sons e avisos de mensagens (2026-11-19):
 - Zoom no desktop: o Ctrl+Plus do menu padrao nao dispara no ABNT2. `before-input-event` trata Ctrl + '='/'+'/

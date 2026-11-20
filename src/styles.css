@@ -2301,3 +2301,8 @@ button:disabled {
 @media (prefers-reduced-motion:reduce) { .call-card.is-live { animation:none } }
 .call-card-unread { margin-left:auto; flex:none; display:inline-flex; align-items:center; gap:3px; padding:2px 6px; border-radius:8px;
   background:#fff; color:var(--ink); font-size:10px; font-weight:700; animation:pop .35s var(--bounce) both }
+
+/* ---------- Tabuleiro do servidor (1.10) ---------- */
+.shell:not(.in-hub) > .main { grid-column:2 }
+.shell.is-board,.shell.is-board.is-collapsed { grid-template-columns:0 minmax(0,1fr) }
+.shell.is-board .main-body { height:100% }
