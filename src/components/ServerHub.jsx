@@ -68,9 +68,19 @@ export default function ServerHub({ servers, ownerId, onDelete, returningId, onO
     if (step === 'join' || step === 'create') form.current?.querySelector('input')?.focus()
     if (step === 'arrived') {
       play('wave')
+      // A onda vive no body: comeca no impacto da carta e termina por cima da transicao para o tabuleiro.
+      if (!reduced() && center.current) {
+        const r = center.current.getBoundingClientRect()
+        const wave = document.createElement('div')
+        wave.className = 'deck-wave is-global'
+        wave.style.setProperty('--cx', r.left + r.width / 2 + 'px')
+        wave.style.setProperty('--cy', r.top + r.height / 2 + 'px')
+        document.body.append(wave)
+        setTimeout(() => wave.remove(), 1100)
+      }
       timer.current = setTimeout(() => {
         if (center.current) onOpen(selected,center.current)
-      },reduced() ? 0 : 820)
+      },reduced() ? 0 : 470)
       return () => clearTimeout(timer.current)
     }
   },[step,selected,onOpen])
@@ -246,7 +256,6 @@ export default function ServerHub({ servers, ownerId, onDelete, returningId, onO
       <button className="hub-brand" aria-label="Menu da conta" aria-expanded={account.open} onClick={()=>account.setOpen(!account.open)}><i className="brand-mark" aria-hidden/>Visor</button>
       {account.open && <div className="hub-account-menu"><button onClick={()=>{account.setOpen(false);editProfile()}}><UserRound size={15}/>Perfil</button><SoundToggle size={15}/><button onClick={logout}><LogOut size={15}/>Sair</button></div>}
     </div></header>
-    {step==='arrived' && <div className="deck-wave" aria-hidden="true"/>}
     <div ref={center} className={'deck-center step-'+step}>
       {step==='idle' ? <Layers size={24} aria-hidden/> : step==='arrived' || step==='returning' ? <Face server={selected}/> :
         <div ref={form} className="deck-actions">

@@ -2306,3 +2306,12 @@ button:disabled {
 .shell:not(.in-hub) > .main { grid-column:2 }
 .shell.is-board,.shell.is-board.is-collapsed { grid-template-columns:0 minmax(0,1fr) }
 .shell.is-board .main-body { height:100% }
+.shell.in-hub { grid-template-columns:0 minmax(0,1fr) }
+.shell.snap { transition:none !important }
+/* entrada pela mesa: a sala monta escondida sob a mesa que se expande e aparece quando ela encaixa */
+.board-entering .shell > .sidebar,.board-entering .main-head,.board-entering .call-session { opacity:0 }
+.board-revealing .shell > .sidebar { animation:board-side-in .55s var(--spring) both }
+.board-revealing .main-head { animation:board-fade-in .4s .05s var(--out) both }
+.board-revealing .call-session { animation:board-fade-in .24s ease-out both }
+@keyframes board-side-in { from { opacity:0; translate:-28px 0 } }
+@keyframes board-fade-in { from { opacity:0 } }

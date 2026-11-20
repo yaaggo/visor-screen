@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-19, versao 1.10.0 (tabuleiro do servidor).
+Ultima atualizacao: 2026-11-19, versao 1.10.1 (transicoes do tabuleiro).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -242,6 +242,17 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.10.1 — transicoes do tabuleiro (2026-11-19):
+- Causa do voo carta -> capa no lugar errado: `.shell` anima `grid-template-columns`; ao trocar de tela a
+  coluna lateral ia de 232 a 0 e o conteudo deslizava durante a animacao. Agora `.shell.snap` (dois quadros
+  apos mudar servidor/canal) desliga a transicao; so recolher a lateral anima. `.in-hub` tambem tem coluna 0.
+- Entrar na mesa: carta pousa, `body.board-entering` esconde sala/lateral/barra, a sala monta sob a mesa e a
+  mesa se expande ate o `.table-felt` medido apos montar; ao encaixar, `board-revealing` mostra a sala e a
+  lateral desliza. Sair: o Shell mede o `.table-felt` antes de navegar e o tabuleiro encolhe dele ate a mesa
+  (escondida ate pousar); as outras mesas entram com atraso.
+- Mesas com raio 30px. Onda do deck no body (centrada na carta) e abertura em 470 ms: a carta da um impacto,
+  sobe e acende enquanto a onda passa, e a onda termina por cima da transicao para o tabuleiro.
 
 1.10.0 — tabuleiro do servidor (2026-11-19):
 - Servidor sem canal aberto = `ServerBoard` (board.css): cada canal de transmissao e uma mesa (cartas de quem

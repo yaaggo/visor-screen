@@ -20,36 +20,45 @@ export default function ServerBoard({ server, channels, people, me, header, prof
   const [creating, setCreating] = useState(false)
 
   const tableEl = id => root.current?.querySelector(`[data-table="${CSS.escape(id)}"]`)
-  const stageRect = () => {
+  const box = r => ({ left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' })
+  const RADIUS = '30px'
+  // Area aproximada da mesa da sala (lateral + barra do canal), usada so se nao der para medir.
+  const stageGuess = () => {
     const r = root.current.getBoundingClientRect()
-    return { left: r.left + SIDEBAR + 16, top: r.top + 72, width: r.width - SIDEBAR - 32, height: r.height - 88 }
+    return { left: r.left + SIDEBAR + 32, top: r.top + 56 + 32, width: r.width - SIDEBAR - 64, height: r.height - 56 - 64 - 120 }
   }
+  const [landed, setLanded] = useState(null)
+  const landing = returning && landed !== returning ? returning.id : null
 
-  // Volta ao tabuleiro: a sala encolhe ate a mesa e a carta desce para o lugar.
+  // Volta ao tabuleiro: a mesa da sala (medida antes de sair) encolhe ate a mesa do canal,
+  // que fica escondida ate a sala pousar nela; a carta desce para o lugar.
   useLayoutEffect(() => {
-    if (!returning || reduced()) return
-    const table = tableEl(returning)
-    if (!table) return
+    if (!returning) return
+    const table = tableEl(returning.id)
+    if (!table || reduced()) { setLanded(returning); return }
     play('exit')
-    const to = table.querySelector('.table-surface').getBoundingClientRect()
-    const from = stageRect()
+    const surface = table.querySelector('.table-surface')
+    const to = surface.getBoundingClientRect()
+    const from = returning.rect ?? stageGuess()
     const zoom = document.createElement('div')
     zoom.className = 'board-zoom'
     document.body.append(zoom)
-    const box = r => ({ left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' })
-    const a = zoom.animate([{ ...box(from), borderRadius: '22px', opacity: 1 }, { ...box(to), borderRadius: '999px', opacity: 1 }, { ...box(to), borderRadius: '999px', opacity: 0 }],
-      { duration: 720, easing: 'cubic-bezier(.32,.72,0,1)', fill: 'forwards' })
-    a.onfinish = () => zoom.remove()
+    const shrink = zoom.animate([{ ...box(from), borderRadius: '22px' }, { ...box(to), borderRadius: RADIUS }],
+      { duration: 620, easing: 'cubic-bezier(.32,.72,0,1)', fill: 'forwards' })
+    shrink.onfinish = () => {
+      setLanded(returning)
+      zoom.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards' }).onfinish = () => zoom.remove()
+    }
     const card = seat.current
     if (card) {
       const c = card.getBoundingClientRect()
       card.animate([
-        { transform: `translate(${to.left + to.width / 2 - c.left - c.width / 2}px,${to.top + to.height / 2 - c.top - c.height / 2}px) scale(.55) rotate(-8deg)`, opacity: 0 },
-        { opacity: 1, offset: .35 },
+        { transform: `translate(${from.left + from.width / 2 - c.left - c.width / 2}px,${from.top + from.height - c.top - c.height}px) scale(.8)`, opacity: 0 },
+        { opacity: 1, offset: .3 },
         { transform: 'none', opacity: 1 },
-      ], { duration: 760, delay: 180, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'backwards' })
+      ], { duration: 720, delay: 120, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'backwards' })
     }
-    return () => { a.cancel(); zoom.remove() }
+    return () => { shrink.cancel(); zoom.remove() }
   }, [returning])
 
   useEffect(() => {
@@ -60,13 +69,15 @@ export default function ServerBoard({ server, channels, people, me, header, prof
     return () => { removeEventListener('pointerdown', close); removeEventListener('blur', close) }
   }, [menu])
 
+  // Entrar: a carta pousa na mesa; a sala monta escondida por baixo e a mesa se expande ate a mesa
+  // real da sala (medida depois de montar). Quando encaixa, a sala aparece e a lateral entra.
   function join(channel, copy) {
     if (leaving) return
     const table = tableEl(channel.id)
     if (!table || reduced()) { onJoin(channel); return }
     setLeaving(channel.id)
-    const surface = table.querySelector('.table-surface').getBoundingClientRect()
-    // 1) a carta pousa no centro da mesa
+    const surfaceEl = table.querySelector('.table-surface')
+    const surface = surfaceEl.getBoundingClientRect()
     let card = copy
     if (!card) {
       const s = seat.current.getBoundingClientRect()
@@ -78,28 +89,33 @@ export default function ServerBoard({ server, channels, people, me, header, prof
     }
     const c = card.getBoundingClientRect()
     const base = { left: parseFloat(card.style.left), top: parseFloat(card.style.top) }
-    const tx = surface.left + surface.width / 2 - (base.left + c.width / 2)
-    const ty = surface.top + surface.height / 2 - (base.top + c.height / 2)
+    const at = r => `translate(${r.left + r.width / 2 - base.left - c.width / 2}px,${r.top + r.height / 2 - base.top - c.height / 2}px)`
     play('place')
-    const landing = card.animate([{ transform: getComputedStyle(card).transform }, { transform: `translate(${tx}px,${ty}px) scale(.62) rotate(0deg)` }],
-      { duration: 340, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'forwards' })
-    landing.onfinish = () => {
-      // 2) a mesa se abre ate o tamanho da sala
+    card.animate([{ transform: getComputedStyle(card).transform }, { transform: at(surface) + ' scale(.6) rotate(0deg)' }],
+      { duration: 320, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'forwards' }).onfinish = () => {
       play('enter')
       const zoom = document.createElement('div')
       zoom.className = 'board-zoom is-opening'
+      Object.assign(zoom.style, { ...box(surface), borderRadius: RADIUS })
       document.body.append(zoom)
-      const to = stageRect()
-      const box = r => ({ left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' })
-      zoom.animate([{ ...box(surface), borderRadius: '999px' }, { ...box(to), borderRadius: '22px' }], { duration: 560, easing: 'cubic-bezier(.32,.72,0,1)', fill: 'forwards' })
-      card.animate([{ transform: `translate(${tx}px,${ty}px) scale(.62)` },
-        { transform: `translate(${to.left + to.width / 2 - base.left - c.width / 2}px,${to.top + to.height - base.top - c.height}px) scale(.8)`, opacity: 0 }],
-        { duration: 560, easing: 'cubic-bezier(.32,.72,0,1)', fill: 'forwards' })
-      setTimeout(() => {
-        onJoin(channel)
-        zoom.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 320, delay: 120, fill: 'forwards' }).onfinish = () => zoom.remove()
-        card.remove()
-      }, 560)
+      surfaceEl.style.visibility = 'hidden'
+      document.body.classList.add('board-entering')
+      onJoin(channel) // a sala monta agora, escondida sob a mesa
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const felt = document.querySelector('.call-session:not([hidden]) .table-felt')?.getBoundingClientRect()
+        const to = felt && felt.width > 0 ? felt : stageGuess()
+        const grow = zoom.animate([{ ...box(surface), borderRadius: RADIUS }, { ...box(to), borderRadius: '22px' }],
+          { duration: 560, easing: 'cubic-bezier(.32,.72,0,1)', fill: 'forwards' })
+        card.animate([{ transform: at(surface) + ' scale(.6)', opacity: 1 },
+          { transform: `translate(${to.left + to.width / 2 - base.left - c.width / 2}px,${to.top + to.height - base.top - c.height * .7}px) scale(.7)`, opacity: 0 }],
+          { duration: 520, easing: 'cubic-bezier(.32,.72,0,1)', fill: 'forwards' }).onfinish = () => card.remove()
+        grow.onfinish = () => {
+          document.body.classList.remove('board-entering')
+          document.body.classList.add('board-revealing')
+          setTimeout(() => document.body.classList.remove('board-revealing'), 700)
+          zoom.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 240, fill: 'forwards' }).onfinish = () => zoom.remove()
+        }
+      }))
     }
   }
 
@@ -149,7 +165,7 @@ export default function ServerBoard({ server, channels, people, me, header, prof
   }
 
   const total = people.length
-  return <section ref={root} className={'server-board' + (leaving ? ' is-leaving' : '') + (gesture.current?.copy ? ' is-dragging' : '')}>
+  return <section ref={root} className={'server-board' + (leaving ? ' is-leaving' : '') + (returning ? ' is-returning' : '')}>
     <header className="board-bar">
       {header}
       <span className="board-meta">{channels.length} {channels.length === 1 ? 'mesa' : 'mesas'} · {total} {total === 1 ? 'pessoa' : 'pessoas'}</span>
@@ -162,7 +178,7 @@ export default function ServerBoard({ server, channels, people, me, header, prof
         const live = here.filter(p => p.sharing), crowd = here.filter(p => !p.sharing)
         const mine = here.some(p => p.id === me.id || p.endpointId === me.id)
         return <button key={c.id} data-table={c.id} style={{ '--i': i }}
-          className={'board-table' + (near === c.id ? ' is-near' : '') + (leaving === c.id ? ' is-chosen' : '') + (mine ? ' is-mine' : '')}
+          className={'board-table' + (near === c.id ? ' is-near' : '') + (leaving === c.id ? ' is-chosen' : '') + (mine ? ' is-mine' : '') + (landing === c.id ? ' is-landing' : '')}
           onClick={() => join(c)}
           onContextMenu={e => { if (!owner) return; e.preventDefault(); setMenu({ id: c.id, x: e.clientX, y: e.clientY }) }}>
           <span className="table-surface">

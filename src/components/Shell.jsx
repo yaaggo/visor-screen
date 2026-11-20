@@ -298,6 +298,9 @@ export default function Shell({ profile }) {
   }
 
   function disconnect() {
+    // Mede a mesa da sala antes de sair: o tabuleiro encolhe exatamente dela ate a mesa do canal.
+    const felt = document.querySelector('.call-session:not([hidden]) .table-felt')?.getBoundingClientRect()
+    returnRect.current = felt ? { left: felt.left, top: felt.top, width: felt.width, height: felt.height } : null
     if (channel) go(serverId) // o tabuleiro toca a volta (sala encolhe ate a mesa)
     else play('exit')
     setCall(null)
@@ -312,17 +315,25 @@ export default function Shell({ profile }) {
   }, [call?.id])
   // Volta ao tabuleiro: lembra de qual mesa voce saiu para a animacao de retorno.
   const prevRoute = useRef({ serverId, channelId })
+  const returnRect = useRef(null)
   const [returning, setReturning] = useState(null)
+  // Trocar de tela (deck, tabuleiro, canal) muda a grade de uma vez: a transicao da coluna lateral deslocava
+  // o conteudo durante as animacoes (a carta mirava a capa no lugar antigo). So recolher a lateral anima.
+  const [snap, setSnap] = useState(false)
   useLayoutEffect(() => {
     const prev = prevRoute.current
-    setReturning(prev.serverId === serverId && prev.channelId && !channelId ? prev.channelId : null)
+    setReturning(prev.serverId === serverId && prev.channelId && !channelId ? { id: prev.channelId, rect: returnRect.current } : null)
+    returnRect.current = null
     prevRoute.current = { serverId, channelId }
+    setSnap(true)
+    const id = requestAnimationFrame(() => requestAnimationFrame(() => setSnap(false)))
+    return () => cancelAnimationFrame(id)
   }, [serverId, channelId])
   const callVisible = Boolean(call && call.id === channel?.id)
   const callLabel = call ? (connected ? 'Conectado' : 'Conectando…') : 'Desconectado'
 
   return (
-    <div className={`shell ${!serverId ? 'in-hub' : ''} ${server && !channel ? 'is-board' : ''} ${collapsed ? 'is-collapsed' : ''}`}>
+    <div className={`shell ${!serverId ? 'in-hub' : ''} ${server && !channel ? 'is-board' : ''} ${collapsed ? 'is-collapsed' : ''} ${snap ? 'snap' : ''}`}>
       <UpdateButton/>
       <Tooltips/>
       {serverPhoto && <ProfilePhoto server={serverPhoto} saved={revision =>

@@ -93,3 +93,16 @@
   clip-path:inset(100% 0 0 0 round var(--r-lg)); transition:opacity .18s }
 .deck-copy.arming .deck-facsimile::after { opacity:1; animation:card-fill 1.5s linear both }
 @keyframes card-fill { from { clip-path:inset(100% 0 0 0 round var(--r-lg)) } to { clip-path:inset(0 0 0 0 round var(--r-lg)) } }
+
+/* onda global (no body): centrada na carta, segue durante a transicao para o tabuleiro */
+.deck-wave.is-global { position:fixed; inset:0; z-index:899 }
+.deck-wave.is-global::before,.deck-wave.is-global::after { left:var(--cx,50%); top:var(--cy,50%) }
+/* impacto da carta ao chegar no centro: assenta, sobe de leve e acende enquanto a onda passa */
+.deck-center.step-arrived { animation:deck-impact .7s cubic-bezier(.2,.9,.25,1) both }
+@keyframes deck-impact {
+  0% { scale:.93; box-shadow:0 8px 24px #0006 }
+  16% { scale:1.035 }
+  34% { scale:.995 }
+  100% { scale:1.02; translate:-50% calc(-50% - 6px); box-shadow:0 0 0 1px #ffffff30,0 18px 60px #ffffff14,0 8px 24px #0006 }
+}
+@media(prefers-reduced-motion:reduce){ .deck-center.step-arrived{animation:none} }
