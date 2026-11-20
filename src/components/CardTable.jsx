@@ -393,6 +393,9 @@ function TableCard({ tile, rect, lifted, spot, dim, onDown, onReturn, render }) 
   const [failed, setFailed] = useState(false)
   const [leaving, setLeaving] = useState(false)
   const wasReady = useRef(ready)
+  // Depois de virar, a carta deixa de ser 3D: o video volta ao caminho rapido de composicao.
+  const [flat, setFlat] = useState(ready)
+  useEffect(() => { if (!ready) setFlat(false) }, [ready])
   useEffect(() => {
     if (ready && !wasReady.current && !tile.own) play('flip')
     wasReady.current = ready
@@ -411,9 +414,9 @@ function TableCard({ tile, rect, lifted, spot, dim, onDown, onReturn, render }) 
     setTimeout(onReturn, reduced() ? 0 : 240)
   }
   const style = rect ? { left: rect.x, top: rect.y, width: rect.w, height: rect.h } : { opacity: 0 }
-  return <div className={'table-card' + (ready ? ' is-ready' : '') + (leaving ? ' is-leaving' : '') + (lifted ? ' is-lifted' : '') + (spot ? ' is-spot' : '') + (dim ? ' is-dim' : '')}
+  return <div className={'table-card' + (ready ? ' is-ready' : '') + (flat ? ' is-flat' : '') + (leaving ? ' is-leaving' : '') + (lifted ? ' is-lifted' : '') + (spot ? ' is-spot' : '') + (dim ? ' is-dim' : '')}
     style={style} onPointerDown={onDown}>
-    <div className="table-card-inner">
+    <div className="table-card-inner" onTransitionEnd={e => { if (e.target === e.currentTarget && ready) setFlat(true) }}>
       <div className="table-face table-front">{render(leave)}</div>
       <div className="table-face table-back" aria-hidden={ready}>
         <span className={'back-mark' + (failed ? ' is-failed' : '')}>{failed ? <WifiOff size={22} strokeWidth={1.5}/> : <i/>}</span>

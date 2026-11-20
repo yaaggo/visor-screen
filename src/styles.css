@@ -2285,7 +2285,9 @@ button:disabled {
 .foot-idle { flex:1 }
 .call-card { flex:1; min-width:0; display:flex; align-items:center; gap:2px; padding:3px; border-radius:14px; margin-right:8px;
   background:linear-gradient(150deg,#262626,#121212); border:1px solid #ffffff2e; box-shadow:0 8px 20px -10px #000; animation:rise .4s var(--spring) both }
-.call-card.is-live { border-color:#ffffff90; animation:rise .4s var(--spring) both,call-live 2.2s ease-in-out infinite }
+.call-card { position:relative }
+.call-card.is-live { border-color:#ffffff90 }
+.call-card.is-live::after { content:""; position:absolute; inset:-4px; border-radius:17px; border:1px solid #ffffff40; pointer-events:none; animation:call-live 2.2s ease-in-out infinite }
 .call-card.is-connecting { opacity:.75 }
 .call-card-main { flex:1; min-width:0; display:flex; align-items:center; gap:8px; padding:3px 6px 3px 3px; border-radius:11px; text-align:left }
 .call-card-main:hover { background:var(--hover) }
@@ -2297,8 +2299,8 @@ button:disabled {
 .call-card-main .live-dot { margin-left:auto; flex:none }
 .call-card-leave { width:30px; height:30px; flex:none; display:grid; place-items:center; border-radius:10px; color:var(--muted) }
 .call-card-leave:hover { background:var(--hover); color:var(--text) }
-@keyframes call-live { 0%,100% { box-shadow:0 0 0 0 #ffffff00 } 50% { box-shadow:0 0 0 4px #ffffff14 } }
-@media (prefers-reduced-motion:reduce) { .call-card.is-live { animation:none } }
+@keyframes call-live { 0%,100% { opacity:0 } 50% { opacity:1 } }
+@media (prefers-reduced-motion:reduce) { .call-card.is-live::after { animation:none } }
 .call-card-unread { margin-left:auto; flex:none; display:inline-flex; align-items:center; gap:3px; padding:2px 6px; border-radius:8px;
   background:#fff; color:var(--ink); font-size:10px; font-weight:700; animation:pop .35s var(--bounce) both }
 

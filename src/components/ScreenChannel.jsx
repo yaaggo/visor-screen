@@ -170,6 +170,13 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
     if (sound) play(sound)
   }, [s.peers, visible])
 
+  // Desktop: enquanto transmite, o Visor fica fora da captura de tela (sem efeito espelho).
+  useEffect(() => {
+    if (!desktop || !window.visor.hideFromCapture || !s.sharing) return
+    window.visor.hideFromCapture(true).catch(() => {})
+    return () => { window.visor.hideFromCapture(false).catch(() => {}) }
+  }, [s.sharing])
+
   // Desktop: reduz a disputa por CPU/GPU enquanto transmite.
   useEffect(() => {
     if (!desktop || !window.visor.boost || !s.sharing) return

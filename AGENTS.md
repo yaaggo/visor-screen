@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-19, versao 1.10.1 (transicoes do tabuleiro).
+Ultima atualizacao: 2026-11-19, versao 1.10.2 (desempenho com o Visor na tela capturada).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -242,6 +242,18 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.10.2 — desempenho com o Visor na tela capturada (2026-11-19):
+- Relato: transmissao travando quando o proprio Visor aparecia na tela capturada; outras fontes fluidas.
+  Causas: efeito espelho (a propria transmissao aberta na mesa, capturada de novo a cada quadro) e o custo
+  de composicao da mesa (carta 3D com perspective/preserve-3d/backface sobre o video, filter nas
+  transmissoes esmaecidas, pulsacao de box-shadow infinita na CallCard).
+- Correcoes: durante a transmissao no desktop, `win.setContentProtection(true)` (IPC `capture:hide-self`)
+  tira a janela do Visor das capturas de tela; testado neste Windows: a janela some e aparece o que esta
+  atras (nao fica preto). A carta vira `is-flat` apos virar (sem 3D), o esmaecimento e uma camada por cima e
+  a pulsacao da CallCard anima so opacidade. Efeito colateral: com a transmissao ativa, prints do Windows
+  tambem nao mostram o Visor.
+- Nao medido na maquina da amiga; nao houve comparacao de FPS antes/depois.
 
 1.10.1 — transicoes do tabuleiro (2026-11-19):
 - Causa do voo carta -> capa no lugar errado: `.shell` anima `grid-template-columns`; ao trocar de tela a

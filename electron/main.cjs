@@ -96,6 +96,7 @@ function createWindow() {
   win.webContents.on('render-process-gone', () => {
     stopCapture()
     setStreamingPriority(false)
+    win.setContentProtection(false)
   })
   win.webContents.on('did-start-navigation', (details) => {
     if (details.isMainFrame && !details.isSameDocument) {
@@ -147,6 +148,13 @@ app.whenReady().then(() => {
           }
         }),
     )
+  })
+  // Enquanto transmite, a janela do Visor some das capturas de tela (WDA_EXCLUDEFROMCAPTURE):
+  // sem o efeito espelho (tela mostrando o Visor mostrando a tela) e quem assiste ve o que esta atras.
+  ipcMain.handle('capture:hide-self', (e, on) => {
+    if (!win || e.sender !== win.webContents) return false
+    win.setContentProtection(!!on)
+    return true
   })
   ipcMain.handle('boost', (e, on) => {
     if (e.sender !== win?.webContents || e.senderFrame !== e.sender.mainFrame || typeof on !== 'boolean') return null
