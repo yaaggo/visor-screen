@@ -30,7 +30,6 @@ contextBridge.exposeInMainWorld('visor', {
   onUpdateProgress: callback => subscribe('update:progress',callback),
   onUpdateReady: callback => subscribe('update:ready',callback),
   attention: () => ipcRenderer.send('attention'),
-  hideFromCapture: on => ipcRenderer.invoke('capture:hide-self', on),
   platform: process.platform,
   sources: () => ipcRenderer.invoke('sources'),
   audioApps: () => ipcRenderer.invoke('audio:apps'),

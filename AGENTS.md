@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-19, versao 1.10.2 (desempenho com o Visor na tela capturada).
+Ultima atualizacao: 2026-11-19, versao 1.10.3 (reverte o Visor oculto na captura; investigacao de FPS com foco).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -242,6 +242,20 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.10.3 — reverte o Visor oculto na captura (2026-11-19):
+- Pedido do usuario: o Visor deve continuar aparecendo na captura. `setContentProtection`/`capture:hide-self`
+  removidos. Mantidas as otimizacoes sem efeito visual da 1.10.2 (carta plana apos virar, esmaecimento por
+  camada, pulsacao por opacidade).
+- Investigacao do FPS menor com o Visor em foco (nesta maquina, RTX 3050, cena WebGL saturando a GPU,
+  captura de tela inteira pelo motor Rust, envio H264 local, 8 amostras por estado):
+  com o Visor em foco e a propria previa tocando, a cena caiu para 45-47 fps contra 52-57 com a previa
+  escondida e 53-54 com a cena em foco; a tela capturada mudava 70-79 vezes/s (o espelho da previa) contra
+  ~50. Com GPU folgada (cena leve) nao houve queda em nenhum estado (60/60). O boost de prioridade nao mudou
+  o resultado de forma consistente. Causa: a previa 1080p60 da propria transmissao so toca com o Visor em foco
+  (pausa no blur desde a 1.2.0) e disputa a GPU com o jogo; capturando a tela onde o Visor aparece, ela ainda
+  vira um espelho que gera quadros extras. Em PCs mais fracos o efeito e maior. Tambem pode somar: jogos que
+  limitam o proprio FPS quando perdem o foco. Nada foi alterado no app por essa investigacao.
 
 1.10.2 — desempenho com o Visor na tela capturada (2026-11-19):
 - Relato: transmissao travando quando o proprio Visor aparecia na tela capturada; outras fontes fluidas.
