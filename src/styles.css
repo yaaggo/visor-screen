@@ -2299,3 +2299,5 @@ button:disabled {
 .call-card-leave:hover { background:var(--hover); color:var(--text) }
 @keyframes call-live { 0%,100% { box-shadow:0 0 0 0 #ffffff00 } 50% { box-shadow:0 0 0 4px #ffffff14 } }
 @media (prefers-reduced-motion:reduce) { .call-card.is-live { animation:none } }
+.call-card-unread { margin-left:auto; flex:none; display:inline-flex; align-items:center; gap:3px; padding:2px 6px; border-radius:8px;
+  background:#fff; color:var(--ink); font-size:10px; font-weight:700; animation:pop .35s var(--bounce) both }

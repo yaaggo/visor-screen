@@ -6,12 +6,14 @@ import { lazy, Suspense } from 'react'
 
 // Mesa de teste das cartas: so no `npm run dev`, em #/mesa-teste (sem login).
 const TableLab = import.meta.env.DEV ? lazy(() => import('./components/TableLab.jsx')) : null
+// Pagina dos sons: #/sons (sem login, tambem na versao publicada)
+const SoundLab = lazy(() => import('./components/SoundLab.jsx'))
+const page = () => location.hash === '#/sons' ? 'sons' : TableLab && location.hash === '#/mesa-teste' ? 'mesa' : null
 
 export default function App() {
-  const [lab, setLab] = useState(() => !!TableLab && location.hash === '#/mesa-teste')
+  const [lab, setLab] = useState(page)
   useEffect(() => {
-    if (!TableLab) return
-    const on = () => setLab(location.hash === '#/mesa-teste')
+    const on = () => setLab(page())
     addEventListener('hashchange', on)
     return () => removeEventListener('hashchange', on)
   }, [])
@@ -36,7 +38,7 @@ export default function App() {
     return () => sub.subscription.unsubscribe()
   }, [])
 
-  if (lab) return <Suspense fallback={null}><TableLab/></Suspense>
+  if (lab) return <Suspense fallback={null}>{lab === 'sons' ? <SoundLab/> : <TableLab/>}</Suspense>
   if (state.loading) return <div className="boot"><span className="boot-dot" /></div>
   if (!state.profile) return <Login onReady={(session, profile) => setState({ loading: false, session, profile })} />
   return <Shell profile={state.profile} />

@@ -19,3 +19,24 @@
 .lab-sheet-row span { color:var(--muted) }
 .lab-go { margin-top:6px; display:flex; align-items:center; justify-content:center; gap:8px; padding:10px; border-radius:12px; background:#fff; color:var(--ink); font-weight:650 }
 .lab-go .live-dot { background:var(--ink) }
+.sound-lab { position:fixed; inset:0; overflow:auto; background:radial-gradient(ellipse at 50% 0%,#161616,#0a0a0a 70%); color:var(--text); padding:28px clamp(16px,4vw,48px) }
+.sound-lab header { display:flex; flex-wrap:wrap; gap:16px; align-items:center; justify-content:space-between; margin-bottom:24px }
+.sound-lab header > div:first-child { display:grid; gap:3px }
+.sound-lab header b { font-size:18px }
+.sound-lab header small { color:var(--muted) }
+.sound-controls { display:flex; align-items:center; gap:10px }
+.sound-controls button { display:inline-flex; align-items:center; gap:6px; padding:7px 11px; border-radius:10px; background:#1f1f1f; border:1px solid var(--line-strong); color:var(--text) }
+.sound-controls button:hover { background:#2a2a2a }
+.sound-controls input { width:140px }
+.sound-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:14px }
+.sound-card { display:flex; flex-direction:column; gap:6px; text-align:left; padding:10px 10px 14px; border-radius:16px; min-height:230px;
+  background:linear-gradient(150deg,#2b2b2b,#121212 78%); border:1px solid #ffffff2e; color:var(--text); box-shadow:0 10px 26px -12px #000;
+  transition:translate .45s var(--spring),rotate .45s var(--spring),box-shadow .25s,border-color .25s }
+.sound-card:hover { translate:0 -6px; rotate:-1.5deg; box-shadow:0 18px 34px -12px #000 }
+.sound-card.is-playing { border-color:#fff; animation:sound-pulse .5s var(--spring) }
+.sound-art { display:grid; place-items:center; flex:1; min-height:90px; border-radius:10px; margin-bottom:6px;
+  background:radial-gradient(ellipse at 20% 10%,#4a4a4a,transparent 66%),linear-gradient(135deg,#232323,#0e0e0e); border:1px solid #ffffff16 }
+.sound-card.is-playing .sound-art { background:#fff; color:var(--ink) }
+.sound-card b { font-size:14px }
+.sound-card small { color:var(--muted); font-size:12px; line-height:1.4 }
+@keyframes sound-pulse { 40% { scale:1.05 } }

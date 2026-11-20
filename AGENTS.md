@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-19, versao 1.8.0 (mesa de cartas na sala).
+Ultima atualizacao: 2026-11-19, versao 1.9.0 (zoom, sons e avisos de mensagens).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -242,6 +242,17 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.9.0 — zoom, sons e avisos de mensagens (2026-11-19):
+- Zoom no desktop: o Ctrl+Plus do menu padrao nao dispara no ABNT2. `before-input-event` trata Ctrl + '='/'+'/
+  '-'/'0' (e teclado numerico) e `zoom-changed` (Ctrl + roda), nivel entre -3 e 4. Testado com teclas reais.
+- `src/lib/sound.js`: 15 sons sintetizados em Web Audio (onda, gota, bolha, levantar/pousar/voltar carta,
+  virar, sem conexao, ao vivo, fim, nova transmissao, entrou, saiu, abrir painel, papel amassado), com
+  compressor, volume e liga/desliga em localStorage `visor.sound`. Menu do perfil e da central: "Sons ligados".
+  Pagina para ouvir: `#/sons` (SoundLab, sem login, tambem em producao).
+- Mensagens da call: gota ao chegar; nao lida quando o chat esta fechado, a call esta em outra tela ou a janela
+  sem foco. Aviso: contador no titulo, ponto no icone da aba (web), selo na carta da call e `flashFrame` no
+  desktop (IPC `attention`).
 
 1.8.0 — mesa de cartas na sala (2026-11-19):
 - `CardTable.jsx` + `table.css` substituem StreamGrid, a coluna de avatares, a previa flutuante e a ilha.

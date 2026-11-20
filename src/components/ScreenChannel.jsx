@@ -10,6 +10,7 @@ import { captureDesktop, captureDevice, captureWeb } from '../lib/sources.js'
 import { Avatar, IconButton } from './ui.jsx'
 import SharePanel, { exeKey, pref, useShareConfig } from './SharePanel.jsx'
 import CardTable from './CardTable.jsx'
+import { play } from '../lib/sound.js'
 import TextChannel from './TextChannel.jsx'
 
 let selfPid = 0
@@ -42,7 +43,7 @@ function useAudioApps(enabled) {
   return apps
 }
 
-export default function ScreenChannel({ channel, profile, chatChannel, visitors = [], photo, reportMember, visible = true, onConnection }) {
+export default function ScreenChannel({ channel, profile, chatChannel, visitors = [], photo, reportMember, visible = true, onConnection, onUnread }) {
   const roomRef = useRef(null)
   const captureRef = useRef(null)
   const starting = useRef(false)
@@ -57,24 +58,39 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
   const [chat, setChat] = useState(() => pref.get('visor.chatOpen', true))
   const [toasts, setToasts] = useState([])
   const [unread, setUnread] = useState(0)
-  // Chat fechado: mensagens novas aparecem por alguns segundos sobre a mesa e contam no botao do chat.
+  // Mensagens da call: gota ao chegar; sem o chat a vista (fechado, outra tela ou janela sem foco) conta
+  // como nao lida, aparece sobre a mesa e avisa o Shell (titulo, icone da aba, carta da call, barra de tarefas).
+  const seenRef = useRef(false)
+  seenRef.current = chat && visible
   useEffect(() => {
-    if (chat || !chatChannel || !visible) return
+    if (!chatChannel) return
     const sub = supabase.channel(`chat-peek:${chatChannel.id}:${Math.random().toString(36).slice(2)}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${chatChannel.id}` }, ({ new: m }) => {
         if (m.author_id === profile.id) return
+        const seen = seenRef.current && document.hasFocus()
+        play('drop', { gain: seen ? 0.55 : 1 })
+        if (seen) return
         setUnread(n => n + 1)
-        setToasts(t => [...t.slice(-2), { id: m.id, name: m.author_name, body: m.body }])
-        setTimeout(() => setToasts(t => t.filter(x => x.id !== m.id)), 6000)
+        window.visor?.attention?.()
+        if (!chat && visible) {
+          setToasts(t => [...t.slice(-2), { id: m.id, name: m.author_name, body: m.body }])
+          setTimeout(() => setToasts(t => t.filter(x => x.id !== m.id)), 6000)
+        }
       }).subscribe()
     return () => { supabase.removeChannel(sub) }
-  }, [chat, chatChannel?.id, visible, profile.id])
-  useEffect(() => { if (chat) { setUnread(0); setToasts([]) } }, [chat])
+  }, [chatChannel?.id, profile.id, chat, visible])
+  useEffect(() => {
+    const clear = () => { if (seenRef.current && document.hasFocus()) { setUnread(0); setToasts([]) } }
+    clear()
+    addEventListener('focus', clear)
+    return () => removeEventListener('focus', clear)
+  }, [chat, visible])
+  useEffect(() => { onUnread?.(unread) }, [unread, onUnread])
   const [cfg, update] = useShareConfig()
   const [error, setError] = useState(false)
   const [nativeCapture, setNativeCapture] = useState(false)
   const [panelOpen, setPanelOpen] = useState(false) // painel de transmitir (a carta + aberta)
-  const stopShare = () => { roomRef.current.stopShare(); captureRef.current = null }
+  const stopShare = () => { roomRef.current.stopShare(); captureRef.current = null; play('stop') }
   const [ownOnTable, setOwnOnTable] = useState(true)
   const placedAt = useRef(new Map())
   const needsAudioApps = cfg.kind !== 'device' && (panelOpen || (s.sharing && cfg.audioMode === 'all' && cfg.exclude.length > 0))
@@ -137,6 +153,23 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
 
   useEffect(() => { if (s.sharing) setOwnOnTable(true) }, [s.sharing])
 
+  // Sons da sala: entrou, saiu, comecou a transmitir. Ignora a primeira leitura ao entrar.
+  const roster = useRef(null)
+  const settleAt = useRef(Date.now() + 2000)
+  useEffect(() => {
+    const now = new Map(s.peers.filter(p => p.id !== endpointId).map(p => [p.id, !!p.sharing]))
+    const before = roster.current
+    roster.current = now
+    if (!before || !visible || Date.now() < settleAt.current) return
+    let sound = null
+    for (const [id, sharing] of now) {
+      if (!before.has(id)) sound = sharing ? 'chime' : sound ?? 'join'
+      else if (sharing && !before.get(id)) sound = 'chime'
+    }
+    if (!sound) for (const id of before.keys()) if (!now.has(id)) sound = 'leave'
+    if (sound) play(sound)
+  }, [s.peers, visible])
+
   // Desktop: reduz a disputa por CPU/GPU enquanto transmite.
   useEffect(() => {
     if (!desktop || !window.visor.boost || !s.sharing) return
@@ -178,6 +211,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
         cap = await captureWeb(cfg.kind, preset, cfg.audioMode === 'all', gain)
       }
       if (!(await room.startShare(cap, cfg.presetId, cfg.bitrate))) return false
+      play('live')
       captureRef.current = cap
       return true
     } catch (err) {

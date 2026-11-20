@@ -3,6 +3,7 @@ import { Layers, MessageSquare, Monitor, Pin, PinOff, Plus, Settings2, Smartphon
 import { createPortal } from 'react-dom'
 import { Avatar } from './ui.jsx'
 import './table.css'
+import { play } from '../lib/sound.js'
 
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches
 const FAIL_AFTER_MS = 15000 // sem video ate aqui, o verso avisa (o WebRTC segue tentando)
@@ -178,7 +179,7 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, toasts 
     clearTimeout(g.hold)
     if (!g.copy) { // clique sem arrastar
       end()
-      if (g.kind === 'hand') onPlace(g.id)
+      if (g.kind === 'hand') { play('place'); onPlace(g.id) }
       return
     }
     if (ev.type === 'pointerup') follow(g, ev)
@@ -187,6 +188,7 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, toasts 
     g.detach()
     gesture.current = null
     if (g.node) setTimeout(() => { g.node.style.opacity = '' }, reduced() ? 0 : 240)
+    play(t?.type === 'hand' || !t ? 'back' : 'place')
     if (g.kind === 'hand') {
       if (t?.type === 'slot') pending.current.set(g.id, { index: t.index })
       if (t?.type === 'spot') pending.current.set(g.id, { spot: true })
@@ -226,6 +228,7 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, toasts 
   // Cria a carta que segue o ponteiro. Da mao: copia da carta. Da mesa: a transmissao encolhe ate virar carta.
   function lift(g) {
     if (g.copy) return
+    play('lift')
     onPeek?.(null)
     let copy
     if (g.kind === 'hand') {
@@ -360,7 +363,7 @@ function ShareSheet({ origin, title, onClose, children }) {
     const frames = [{ transform: start, borderRadius: '40px' }, { transform: 'none', borderRadius: '22px' }]
     return el.animate(reverse ? frames.reverse() : frames, { duration: reverse ? 300 : 460, easing: reverse ? 'cubic-bezier(.5,0,.75,0)' : 'cubic-bezier(.32,.72,0,1)', fill: 'both' })
   }
-  useLayoutEffect(() => { morph(false) }, [])
+  useLayoutEffect(() => { play('open'); morph(false) }, [])
   const close = () => {
     if (closing.current) return
     closing.current = true
@@ -389,6 +392,12 @@ function TableCard({ tile, rect, lifted, spot, dim, onDown, onReturn, render }) 
   const ready = !!tile.stream
   const [failed, setFailed] = useState(false)
   const [leaving, setLeaving] = useState(false)
+  const wasReady = useRef(ready)
+  useEffect(() => {
+    if (ready && !wasReady.current && !tile.own) play('flip')
+    wasReady.current = ready
+  }, [ready])
+  useEffect(() => { if (failed) play('fail') }, [failed])
   useEffect(() => {
     setFailed(false)
     if (ready) return
@@ -397,6 +406,7 @@ function TableCard({ tile, rect, lifted, spot, dim, onDown, onReturn, render }) 
   }, [ready, tile.since])
   const leave = () => {
     if (leaving) return
+    play('back')
     setLeaving(true)
     setTimeout(onReturn, reduced() ? 0 : 240)
   }

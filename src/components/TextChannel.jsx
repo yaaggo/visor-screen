@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArrowUp, X } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { Avatar } from './ui.jsx'
+import { play } from '../lib/sound.js'
 
 const PAGE = 60
 const time = (iso) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -55,6 +56,7 @@ export default function TextChannel({ channel, profile, compact = false }) {
     e.preventDefault()
     const body = draft.trim()
     if (!body) return
+    play('send')
     setDraft('')
     stick.current = true
     const temp = { id: `t${Date.now()}`, temp: true, author_id: profile.id, author_name: profile.username, body, created_at: new Date().toISOString() }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowRight, MoreHorizontal, Pencil, Cast, ImagePlus, LogOut, Monitor, Plus, PhoneOff, Radio, Smartphone, Trash2, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { ArrowRight, MoreHorizontal, Pencil, Cast, ImagePlus, LogOut, MessageSquare, Monitor, Plus, PhoneOff, Radio, Smartphone, Trash2, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import SoundToggle from './SoundToggle.jsx'
 import { supabase } from '../lib/supabase.js'
 import { deviceKind, endpointId, presencePublisher } from '../lib/presence.js'
 import { go, useRoute } from '../lib/route.js'
@@ -94,6 +95,27 @@ export default function Shell({ profile }) {
 
   const [call, setCall] = useState(null)
   const [connected, setConnected] = useState(false)
+  const [unread, setUnread] = useState(0)
+  // Mensagens novas: contador no titulo (aba e barra de tarefas) e ponto no icone da aba na web.
+  useEffect(() => {
+    document.title = unread ? `(${unread > 9 ? '9+' : unread}) Visor` : 'Visor'
+    if (window.visor) return
+    const link = document.querySelector('link[rel="icon"]')
+    if (!link) return
+    link.dataset.base ??= link.href
+    if (!unread) { link.href = link.dataset.base; return }
+    const img = new Image()
+    img.onload = () => {
+      const c = document.createElement('canvas'); c.width = c.height = 64
+      const g = c.getContext('2d')
+      g.drawImage(img, 0, 0, 64, 64)
+      g.beginPath(); g.arc(50, 14, 13, 0, Math.PI * 2); g.fillStyle = '#fff'; g.fill()
+      g.lineWidth = 4; g.strokeStyle = '#0a0a0a'; g.stroke()
+      link.href = c.toDataURL('image/png')
+    }
+    img.src = link.dataset.base
+  }, [unread])
+  useEffect(() => { if (!call) setUnread(0) }, [call])
   const origin = useRef(null)
   const directoryServer = call?.server_id ?? serverId
   const directory = useRef(null)
@@ -315,7 +337,7 @@ export default function Shell({ profile }) {
             />
             <div className="side-foot account-foot">
           {call ? <CallCard call={call} server={servers?.find(x => x.id === call.server_id)} connected={connected}
-            live={listedVisitors.some(v => (v.endpointId ?? v.id) === endpointId && v.sharing)} here={callVisible}
+            live={listedVisitors.some(v => (v.endpointId ?? v.id) === endpointId && v.sharing)} here={callVisible} unread={unread}
             onOpen={() => go(call.server_id, call.id)} onLeave={disconnect}/> : <span className="foot-idle"/>}
               <ProfileMenu profile={profile} photo={photo} edit={()=>setEditing(true)} logout={logout}/>
             </div>
@@ -339,7 +361,7 @@ export default function Shell({ profile }) {
           {server && !channel && <div className="channel-landing">{channels?.filter(c => c.kind === 'screen' && c.server_id === serverId).map(c =>
             <button key={c.id} onClick={() => go(serverId,c.id)}><Cast size={22}/>{c.name}</button>)}</div>}
           {call && <div className="call-session" hidden={!callVisible}>
-            <ScreenChannel key={call.id} channel={call} profile={profile} chatChannel={call} visible={callVisible}
+            <ScreenChannel key={call.id} channel={call} profile={profile} chatChannel={call} visible={callVisible} onUnread={setUnread}
               onConnection={setConnected} reportMember={reportMember} visitors={visitors.filter(v => v.channel === call.id)} photo={photo}/>
           </div>}
         </div>
@@ -420,6 +442,7 @@ function ProfileMenu({profile,photo,edit,logout}) {
       <Avatar id={profile.id} revision={photo} name={profile.username} size={38}/>
     </button>
     {pop.open && <div className="sidebar-menu"><button onClick={()=>{pop.setOpen(false);edit()}}><ImagePlus size={16}/>Trocar foto</button>
+      <SoundToggle size={16}/>
       <button onClick={logout}><LogOut size={16}/>Sair da conta</button></div>}
   </div>
 }
@@ -441,12 +464,12 @@ function ChannelCrowd({ people, label, onOpen }) {
 }
 
 // Rodape: a call em andamento vira uma carta deitada (pulsa quando voce esta ao vivo).
-function CallCard({ call, server, connected, live, here, onOpen, onLeave }) {
+function CallCard({ call, server, connected, live, here, unread, onOpen, onLeave }) {
   return <div className={'call-card' + (live ? ' is-live' : '') + (connected ? '' : ' is-connecting') + (here ? ' is-here' : '')}>
     <button className="call-card-main" onClick={onOpen} aria-label={'Voltar para ' + call.name} data-tip={here ? call.name : 'Voltar para a call'}>
       <span className="call-card-face">{server ? <ServerFace server={server}/> : <Cast size={14}/>}</span>
       <span className="call-card-text"><b>{call.name}</b><small>{live ? 'ao vivo' : connected ? 'na call' : 'conectando'}</small></span>
-      <i className="live-dot"/>
+      {unread > 0 ? <span className="call-card-unread" aria-label={unread + ' mensagens novas'}><MessageSquare size={12}/>{unread > 9 ? '9+' : unread}</span> : <i className="live-dot"/>}
     </button>
     <button className="call-card-leave" aria-label="Desconectar" data-tip="Desconectar" onClick={onLeave}><PhoneOff size={14}/></button>
   </div>

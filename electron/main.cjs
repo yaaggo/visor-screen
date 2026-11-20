@@ -67,6 +67,29 @@ function createWindow() {
     if (!url.startsWith('file:')) e.preventDefault()
   })
 
+  // Zoom: o atalho Ctrl+Plus do menu padrao nao dispara no teclado ABNT2 ('+' fica no '=' com Shift),
+  // entao quem diminuia o zoom ficava preso. Trata Ctrl + '=' / '+' / '-' / '0' (e teclado numerico) e Ctrl + roda.
+  const ZOOM_MIN = -3, ZOOM_MAX = 4
+  const zoomBy = step => {
+    const wc = win.webContents
+    wc.setZoomLevel(step === 0 ? 0 : Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, wc.getZoomLevel() + step)))
+  }
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown' || !(input.control || input.meta) || input.alt) return
+    const k = input.key, c = input.code
+    if (k === '=' || k === '+' || c === 'NumpadAdd' || c === 'Equal') zoomBy(0.5)
+    else if (k === '-' || k === '_' || c === 'NumpadSubtract' || c === 'Minus') zoomBy(-0.5)
+    else if ((k === '0' || c === 'Numpad0' || c === 'Digit0') && !input.shift) zoomBy(0)
+    else return
+    event.preventDefault()
+  })
+  win.webContents.on('zoom-changed', (_e, direction) => zoomBy(direction === 'in' ? 0.5 : -0.5))
+
+  // Mensagem nova com a janela sem foco: pisca na barra de tarefas ate o usuario voltar.
+  ipcMain.removeAllListeners('attention')
+  ipcMain.on('attention', event => { if (event.sender === win.webContents && !win.isFocused()) win.flashFrame(true) })
+  win.on('focus', () => win.flashFrame(false))
+
   if (DEV_URL) win.loadURL(DEV_URL)
   else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
 

@@ -3,6 +3,8 @@ import { flushSync } from 'react-dom'
 import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Layers, LogIn, LogOut, Plus, Trash2, UserRound, X } from 'lucide-react'
 import { ServerFace, usePopover } from './ui.jsx'
 import './deck.css'
+import { play } from '../lib/sound.js'
+import SoundToggle from './SoundToggle.jsx'
 
 // Sample a unit-mass spring in four substeps per 60 Hz frame, as in Fan Cards.
 function spring(k, damping) {
@@ -65,6 +67,7 @@ export default function ServerHub({ servers, ownerId, onDelete, returningId, onO
     if (step === 'choose') form.current?.querySelector('button:not(.deck-close)')?.focus()
     if (step === 'join' || step === 'create') form.current?.querySelector('input')?.focus()
     if (step === 'arrived') {
+      play('wave')
       timer.current = setTimeout(() => {
         if (center.current) onOpen(selected,center.current)
       },reduced() ? 0 : 820)
@@ -73,6 +76,7 @@ export default function ServerHub({ servers, ownerId, onDelete, returningId, onO
   },[step,selected,onOpen])
 
   function copyCard(node,rect) {
+    play('lift')
     const copy = document.createElement('div')
     const face = node.cloneNode(true)
     face.removeAttribute('data-server')
@@ -110,7 +114,7 @@ export default function ServerHub({ servers, ownerId, onDelete, returningId, onO
           setSelected(server)
           setStep(server ? 'arrived' : 'choose')
         })
-      } else held.current = false
+      } else { held.current = false; play('back') }
       clearGesture()
     }
   }
@@ -181,6 +185,7 @@ export default function ServerHub({ servers, ownerId, onDelete, returningId, onO
       {transform:'perspective(400px) rotateX(44deg) rotateZ(-12deg) scale(.68)',clipPath:'polygon(0 0,100% 0,72% 100%,27% 82%)',offset:.45},
       {transform:`translate(${dx}px,${dy}px) rotate(35deg) scale(.06)`,opacity:0}
     ],{duration:reduced()?1:400,fill:'forwards'})
+    play('crumple')
     try { await folding.finished; if (gesture.current===g) await onDelete(g.server) }
     catch { if(gesture.current===g)setError('Não foi possível apagar o servidor.') }
     finally { if(gesture.current===g){clearGesture();held.current=false} }
@@ -239,7 +244,7 @@ export default function ServerHub({ servers, ownerId, onDelete, returningId, onO
     onKeyDown={e=>{if(e.key==='Escape' && !busy && ['choose','create','join'].includes(step))reset()}}>
     <header className="hub-titlebar"><div ref={account.ref} className="hub-account">
       <button className="hub-brand" aria-label="Menu da conta" aria-expanded={account.open} onClick={()=>account.setOpen(!account.open)}><i className="brand-mark" aria-hidden/>Visor</button>
-      {account.open && <div className="hub-account-menu"><button onClick={()=>{account.setOpen(false);editProfile()}}><UserRound size={15}/>Perfil</button><button onClick={logout}><LogOut size={15}/>Sair</button></div>}
+      {account.open && <div className="hub-account-menu"><button onClick={()=>{account.setOpen(false);editProfile()}}><UserRound size={15}/>Perfil</button><SoundToggle size={15}/><button onClick={logout}><LogOut size={15}/>Sair</button></div>}
     </div></header>
     {step==='arrived' && <div className="deck-wave" aria-hidden="true"/>}
     <div ref={center} className={'deck-center step-'+step}>
