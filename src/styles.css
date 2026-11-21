@@ -47,7 +47,11 @@ body {
   font: 450 14px/1.45 'Inter Variable', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
+  /* App, nao site: titulos, rotulos e imagens nao sao selecionaveis nem arrastaveis. So mensagens e campos. */
+  user-select: none;
+  -webkit-user-drag: none;
 }
+input, textarea, [contenteditable], .msg-main p { user-select: text; }
 
 button,
 input {

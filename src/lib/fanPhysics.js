@@ -14,6 +14,7 @@ const TOP = 60
 const INTENT_MS = 60 // passar rapido por cima de uma carta no caminho nao mexe no leque
 const FALLBACK_MS = 420 // se a passagem nao abrir (layout inesperado), troca mesmo assim
 const GAP = 8 // folga entre a carta em foco (ja ampliada) e as vizinhas
+const MOVE = 10 // px que o ponteiro precisa andar entre duas trocas de carta
 
 export function attachFanPhysics(container, selector, { positionAt } = {}) {
   let wanted = null // carta sob o ponteiro (ou foco do teclado)
@@ -129,6 +130,8 @@ export function attachFanPhysics(container, selector, { positionAt } = {}) {
     if (next === wanted && !lowering && !raising) return
     wanted = next
     since = performance.now()
+    mark = at && { ...at }
+    pending = false
     if (reduced()) {
       for (const c of cards()) { setZ(c, c === next ? TOP : 0); c.style.setProperty('--part', '0px') }
       top = next; lowering = raising = null; parted = undefined
@@ -154,13 +157,38 @@ export function attachFanPhysics(container, selector, { positionAt } = {}) {
     if (!wanted || reduced()) target(next)
     else intent = setTimeout(() => target(next), INTENT_MS)
   }
-  const over = e => { if (e.pointerType !== 'touch') aim(cardFrom(e)) }
-  const leave = e => { if (e.pointerType !== 'touch' && !container.contains(document.activeElement)) aim(null) }
+  // Histerese: as cartas se movem ao abrir espaco, entao com o ponteiro parado o elemento sob ele muda sozinho
+  // (vao entre duas cartas, borda da vizinha). Depois de cada troca, a proxima so acontece quando o ponteiro
+  // de fato andou MOVE px; ai o alvo e lido de novo no ponto atual.
+  let at = null, mark = null, pending = false
+  const moved = () => !mark || !at || Math.hypot(at.x - mark.x, at.y - mark.y) >= MOVE
+  const cardAt = () => {
+    const el = at && document.elementFromPoint(at.x, at.y)
+    return el ? cardFrom({ target: el }) : null
+  }
+  const over = e => {
+    if (e.pointerType === 'touch') return
+    at = { x: e.clientX, y: e.clientY }
+    const next = cardFrom(e)
+    if (wanted && next !== wanted && !moved()) { pending = true; return }
+    aim(next)
+  }
+  const track = e => {
+    if (e.pointerType === 'touch') return
+    at = { x: e.clientX, y: e.clientY }
+    if (pending && moved()) { pending = false; aim(cardAt()) }
+  }
+  const leave = e => {
+    if (e.pointerType === 'touch' || container.contains(document.activeElement)) return
+    pending = false
+    aim(null)
+  }
   const focusIn = e => { if (e.target.matches?.(':focus-visible')) target(cardFrom(e)) }
   const focusOut = e => { if (!container.contains(e.relatedTarget) && !container.matches(':hover')) target(null) }
 
   container.addEventListener('pointerover', over)
   container.addEventListener('pointerleave', leave)
+  container.addEventListener('pointermove', track)
   container.addEventListener('focusin', focusIn)
   container.addEventListener('focusout', focusOut)
   return () => {
@@ -168,6 +196,7 @@ export function attachFanPhysics(container, selector, { positionAt } = {}) {
     clearTimeout(intent)
     container.removeEventListener('pointerover', over)
     container.removeEventListener('pointerleave', leave)
+    container.removeEventListener('pointermove', track)
     container.removeEventListener('focusin', focusIn)
     container.removeEventListener('focusout', focusOut)
     container.classList.remove('is-settling')

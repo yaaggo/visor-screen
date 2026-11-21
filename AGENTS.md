@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-21, versao 1.12.1 (carta endireita a caminho do centro).
+Ultima atualizacao: 2026-11-21, versao 1.12.2 (app sem comportamento de site, foco das cartas sem tremer).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -242,6 +242,16 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.12.2 — app sem comportamento de site e foco das cartas estavel (2026-11-21):
+- `body` com `user-select:none` e `-webkit-user-drag:none`; so campos e o texto das mensagens (`.msg-main p`)
+  sao selecionaveis. `main.jsx` cancela todo `dragstart` nativo fora de campos (os gestos usam pointer events;
+  soltar arquivo de fora na foto continua). Antes dava para selecionar titulos e arrastar capa+nome do servidor.
+- `fanPhysics.js`: histerese. Ao abrir espaco as cartas se movem sob o ponteiro parado e o Chromium reavalia o hover,
+  entao no vao/borda entre duas cartas o foco alternava sem parar. Agora, apos cada troca, a proxima so acontece
+  depois de o ponteiro andar 10 px (`MOVE`), relendo o alvo no ponto atual.
+  Medido no navegador do app (Chromium real) no DeckLab: versao antiga em x=342 alternou gta rp/estudio 5 vezes em 1 s
+  com o mouse parado; nova: 0 trocas em 3 s nos mesmos pontos. O Chrome headless nao reproduz (nao reavalia o hover).
 
 1.12.1 — carta endireita a caminho do centro (2026-11-21):
 - Arrastando uma carta do deck, a inclinacao do leque diminui conforme ela se aproxima do centro (smoothstep sobre a
