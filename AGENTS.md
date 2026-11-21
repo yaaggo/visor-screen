@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-21, versao 1.13.0 (campo ASCII, foto em ASCII e radar no deck).
+Ultima atualizacao: 2026-11-21, versao 1.14.0 (ping, miniplayer, replay F9 e pagina de clipes).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -44,6 +44,7 @@ electron/
   audio.cjs        spawn/kill do visor-audio.exe, repassa PCM ao renderer (IPC 'audio:data')
   capture.cjs      fonte selecionada, ciclo de vida do motor Rust e texturas compartilhadas
   capture-rs/      helper Rust (WGC/D3D11) usado pelo motor experimental
+  clips.cjs        pasta Videos\Visor Clips (salvar/listar/ler/Lixeira) e F9 global do replay
   native/visor-audio.cpp   helper nativo; build.cmd compila em native/bin/
   icon.png, icon.ico
 src/
@@ -57,10 +58,14 @@ src/
   lib/sources.js   captureWeb / captureDesktop / captureDevice / listDevices / matchAudio
   lib/nativeCapture.js   recebe VideoFrame do preload e monta uma track WebRTC
   lib/appAudio.js  AppAudioMixer: AudioWorklet por app -> MediaStreamDestination (1 track)
+  lib/replay.js    ReplayBuffer: dois MediaRecorder defasados para o F9
+  lib/asciiField.js, lib/radar.js, lib/topics.js   campo ASCII do deck, radar de presenca, canais calls:<id> compartilhados
   lib/net.js       measureUpload(): 4 envios paralelos de 4 MB, RTT aquecido
   components/Login.jsx, Shell.jsx, TextChannel.jsx, ui.jsx
   components/ScreenChannel.jsx   palco + volume do espectador + ilha
-  components/SharePanel.jsx      painel da ilha: fonte, grade de janelas, audio, qualidade, JellySlider
+  components/SharePanel.jsx      painel da ilha: fonte, grade de janelas, audio, replay, qualidade, JellySlider
+  components/MiniPlayer.jsx      miniplayer (janela Electron / Document PiP / cartao flutuante)
+  components/ClipsPage.jsx       pagina #/clips: leque de clipes + player
 supabase/config.toml   config declarativa MINIMA (so auth). `config push` so altera o que esta aqui
 supabase/migrations/20261118112523_visor.sql   schema (ja aplicado no remoto)
 ```
@@ -242,6 +247,35 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.14.0 — ping, miniplayer, replay F9 e clipes (2026-11-21). Um commit por recurso:
+- Foto em ASCII do deck centralizada (mesmo centro da vaga/iniciais) e com tamanho de ~1,15 carta (`photoBox`).
+- Ping (`screen.js` ping/onPing, evento broadcast `ping` no canal `screen:<canal>`): Alt+clique num ponto da
+  transmissao; x/y normalizados no video com letterbox, limite de 450 ms; toda tela que mostra aquela transmissao
+  (inclusive a de quem transmite) desenha onda + nome. Alt+clique nao levanta a carta da mesa. No Electron, Alt
+  sozinho nao abre mais o menu escondido (`before-input-event`). Quem transmite com a previa fora da mesa ouve a gota.
+- Miniplayer (`MiniPlayer.jsx`, `mini.css`): arrastar uma transmissao da mesa ate a borda da janela (14 px, ou para
+  fora) acende a borda com "Miniplayer"; soltar abre. Desktop: janela propria do Electron (`window.open('about:blank',
+  'visor-mini')`, liberada no `setWindowOpenHandler`, sem moldura, sempre no topo nivel screen-saver, canto inferior
+  direito do monitor, arrasta pela faixa do topo). O Electron 45 expoe `documentPictureInPicture` mas `requestWindow`
+  falha com "no window". Navegador: Document PiP; sem ele, cartao flutuante arrastavel. A transmissao continua sendo
+  recebida fora da mesa; som (amplificador como no palco), voltar para a mesa, parar de ver; fechar a janela = voltar.
+  O fechamento da janela e adiado 1 tique: o StrictMode do dev desmonta/remonta o efeito e fechava a janela.
+- Replay (`src/lib/replay.js`, `electron/clips.cjs`): opcao "Replay" no painel (desktop): desligado, 30 s ou 1 min.
+  No ar, dois MediaRecorder defasados (reinicio a cada 2N s, defasagem N s); F9 fecha o mais antigo, entao cada clipe e
+  um WebM valido de N a 2N s (H264 por hardware quando disponivel; 8 Mbps). F9 e atalho global (funciona com o jogo
+  em foco), registrado so enquanto o replay esta armado. Arquivos em `Videos\Visor Clips` (`.webm` + `.jpg` miniatura
+  via ImageCapture + `.json` com duracao/origem). Aviso "Clip salvo" e chip F9 na propria transmissao. Apagar = Lixeira.
+- Clipes (`ClipsPage.jsx`, `clips.css`, rota `#/clips`, botao ao lado da marca no deck, so desktop): leque de cartas
+  com miniatura, hora e duracao, mais novos a esquerda, 7 por pagina; arrastar para cima (ou clicar) leva ao player
+  do centro (play/pausa, barra, tempo, mostrar na pasta, Lixeira, fechar). A duracao do WebM do MediaRecorder e
+  recuperada pulando ao fim no `loadedmetadata`.
+- QA (Electron dev 1440x900 via CDP, script local de screenshots; duas contas temporarias no Supabase real, apagadas):
+  ping de A chegou a B com nome e ponto; miniplayer abriu (420x236, video tocando), "voltar" devolveu a mesa;
+  F9 real pelo sistema (SendKeys) salvou 3 clipes (54 s, 26 s, 16 s); ffmpeg decodifica o WebM inteiro (avisos de
+  dts repetido do MediaRecorder, sem efeito); pagina de clipes: arrastar para o player tocou o clipe. Paginas de
+  teste (#/deck-teste, #/mesa-teste) sem erros. Nao verificado: F9 com um jogo real em tela cheia, miniplayer sobre
+  jogo em tela cheia exclusiva (so funciona em janela/sem borda), Document PiP no Chrome, custo do replay na GPU.
 
 1.13.0 — campo ASCII, foto em ASCII e radar no deck (2026-11-21):
 - `src/lib/asciiField.js`: canvas atras do deck com grade de caracteres (` .·:-=+*#`, celulas 12x14). Lente e rastro do
