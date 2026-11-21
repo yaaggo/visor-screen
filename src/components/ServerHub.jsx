@@ -87,9 +87,13 @@ export default function ServerHub({ servers, ownerId, onDelete, onLeave, returni
     const cy = root.top + root.height / 2
     const below = hand.current.getBoundingClientRect().top - 24 - cy, above = cy - root.top - 56 - 30
     const size = Math.max(ch * .8, Math.min(ch * 1.15, below * 2, above * 2))
-    return { size, cy }
+    // Corpo celeste (capa sem foto): ocupa ~60% da imagem e o fundo preto some, entao a caixa pode ser maior.
+    const cosmic = Math.max(size, Math.min(size * 1.9, below * 2 / .62, above * 2 / .62))
+    return { size, cy, cosmic }
   }
-  const photoSize = () => photoBox().size
+  const isCosmic = url => url.startsWith('data:image/svg')
+  const photoSize = url => isCosmic(url) ? photoBox().cosmic : photoBox().size
+  const maskOf = url => photoMask(url, photoSize(url), photoSize(url), { cosmic:isCosmic(url) })
   function showGlyph(server) {
     const f = field.current, el = center.current
     if (!f || !el) return
@@ -97,15 +101,15 @@ export default function ServerHub({ servers, ownerId, onDelete, onLeave, returni
     hovered.current = server
     const cw = el.offsetWidth, ch = el.offsetHeight
     const url = server && serverPhotoUrl(server)
-    const photo = url && photoMask(url, photoSize(), photoSize())
+    const photo = url && maskOf(url)
     if (photo && !photo.ready && !photo.failed) photo.promise.then(() => { if (hovered.current === server) showGlyph(server) })
     let height = ch * .95
     if (step !== 'idle' || call?.server) f.glyph(null)
     else if (server === undefined) f.glyph({ text:'VISOR', width:Math.min(innerWidth * .56, cw * 4.4), height:ch * .74, strength:.36, breathe:true })
     else if (photo?.ready) {
-      const { size, cy } = photoBox()
+      const box = photoBox(), cy = box.cy, size = isCosmic(url) ? box.size * 1.1 : box.size
       height = size
-      f.glyph({ mask:photo.ready, shade:true, strength:.62, cy, key:'photo:' + url + ':' + photo.ready.cols + ':' + Math.round(cy) })
+      f.glyph({ mask:photo.ready, shade:true, strength:isCosmic(url) ? .85 : .62, cy, key:'photo:' + url + ':' + photo.ready.cols + ':' + Math.round(cy) })
       peek.current.style.top = Math.round(cy - size / 2 - 26 - canvas.current.parentElement.getBoundingClientRect().top) + 'px'
     }
     else f.glyph({ text:server ? serverInitials(server.name).toUpperCase() : '+', width:cw * 2.3, height:ch * (server ? .95 : 1.5), strength:.5 })
@@ -120,7 +124,7 @@ export default function ServerHub({ servers, ownerId, onDelete, onLeave, returni
   const photoKey = servers.map(s => s.id + ':' + (s.photo_url ?? s.photo_revision ?? '')).join('|')
   useLayoutEffect(() => {
     const idle = window.requestIdleCallback ?? (fn => setTimeout(fn, 200))
-    idle(() => { for (const s of servers) { const url = serverPhotoUrl(s); if (url) photoMask(url, photoSize(), photoSize()) } })
+    idle(() => { for (const s of servers) { const url = serverPhotoUrl(s); if (url) maskOf(url) } })
   }, [photoKey])
   // Entre duas cartas vizinhas o ponteiro sai de uma e entra na outra: espera um pouco antes de voltar a marca.
   const leaveTimer = useRef(0)

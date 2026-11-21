@@ -52,9 +52,11 @@ function rasterize(text, width, height) {
 // percentis 5 e 95 e um quadrado arredondado como contorno. Fora do contorno = -1 (a textura continua).
 // Custa um drawImage e um getImageData de poucas centenas de pixels; o resultado fica em cache por URL e tamanho.
 const photoCache = new Map()
-export function photoMask(url, width, height) {
+// cosmic: corpo celeste em fundo preto (capa sem foto): sem contorno e sem esticar o contraste; o que e quase
+// preto vira -2 (a textura do campo continua intacta em volta do corpo).
+export function photoMask(url, width, height, { cosmic = false } = {}) {
   const cols = Math.max(1, Math.round(width / CW)), rows = Math.max(1, Math.round(height / CH))
-  const key = url + '|' + cols + 'x' + rows
+  const key = url + '|' + cols + 'x' + rows + (cosmic ? '|c' : '')
   let entry = photoCache.get(key)
   if (!entry) {
     const img = new Image()
@@ -74,6 +76,20 @@ export function photoMask(url, width, height) {
       const inside = new Uint8Array(cols * rows)
       const pw = cols * CW, ph = rows * CH, rad = Math.min(pw, ph) * .2
       const sample = []
+      if (cosmic) {
+        const mask = new Float32Array(cols * rows), lum = new Float32Array(cols * rows), body = []
+        for (let i = 0; i < mask.length; i++) {
+          lum[i] = (data[i * 4] * .2126 + data[i * 4 + 1] * .7152 + data[i * 4 + 2] * .0722) / 255 * data[i * 4 + 3] / 255
+          if (lum[i] >= .08) body.push(lum[i])
+        }
+        // Contraste esticado so dentro do corpo: as faixas e crateras aparecem mesmo num planeta cinza medio.
+        body.sort((a, b) => a - b)
+        const lo = body[Math.floor(body.length * .05)] ?? .08, hi = body[Math.floor(body.length * .97)] ?? 1
+        for (let i = 0; i < mask.length; i++)
+          mask[i] = lum[i] < .08 ? -2 : .22 + .78 * Math.pow(Math.min(1, Math.max(0, (lum[i] - lo) / Math.max(.05, hi - lo))), .85)
+        entry.ready = { mask, cols, rows }
+        return entry.ready
+      }
       for (let r = 0, i = 0; r < rows; r++) for (let col = 0; col < cols; col++, i++) {
         const x = col * CW + CW / 2, y = r * CH + CH / 2
         const qx = Math.abs(x - pw / 2) - (pw / 2 - rad), qy = Math.abs(y - ph / 2) - (ph / 2 - rad)
@@ -261,7 +277,7 @@ export function createAsciiField(canvas, { reduced = false } = {}) {
           const k = r * gl.cols + c, m = gl.mask[k], i = rr * cols + cc
           if (gl.shade) {
             // Foto: tons da imagem pela rampa inteira (sombreado ASCII); um ponto fraco marca o contorno escuro.
-            if (m < 0) { values[i] -= base[i] * .4 * gl.amt; continue }
+            if (m < 0) { if (m > -2) values[i] -= base[i] * .4 * gl.amt; continue }
             values[i] = Math.max(values[i] - base[i] * gl.amt, (.07 + m * .93) * strength)
             if (gl.scramble && age < gl.seeds[k] * 420 && m > .2) scr[i] = 3 + Math.floor(Math.random() * (G - 3))
             continue
