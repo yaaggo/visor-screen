@@ -3,6 +3,7 @@ import { ArrowRight, Plus, Trash2 } from 'lucide-react'
 import { Avatar } from './ui.jsx'
 import { play } from '../lib/sound.js'
 import './board.css'
+import { useAsciiField } from '../lib/useAsciiField.js'
 
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches
 const SIDEBAR = 232
@@ -12,6 +13,9 @@ const SIDEBAR = 232
 // Ao sair de todos os canais, a sala encolhe de volta para a mesa e a carta volta ao lugar.
 export default function ServerBoard({ server, channels, people, me, header, profileMenu, callCard, owner, returning, onJoin, onCreate, onDelete }) {
   const root = useRef(null)
+  const canvas = useRef(null)
+  // Campo ASCII no fundo do tabuleiro (o mesmo do deck); onda ao tocar o espaco entre as mesas.
+  const field = useAsciiField(canvas, { background: t => t.matches?.('.board-tables, .board-seat') })
   const seat = useRef(null)
   const gesture = useRef(null)
   const [near, setNear] = useState(null)
@@ -94,6 +98,7 @@ export default function ServerBoard({ server, channels, people, me, header, prof
     card.animate([{ transform: getComputedStyle(card).transform }, { transform: at(surface) + ' scale(.6) rotate(0deg)' }],
       { duration: 320, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'forwards' }).onfinish = () => {
       play('enter')
+      field.current?.wave(surface.left + surface.width / 2, surface.top + surface.height / 2, { strength: .8, width: 60, life: 800 })
       const zoom = document.createElement('div')
       zoom.className = 'board-zoom is-opening'
       Object.assign(zoom.style, { ...box(surface), borderRadius: RADIUS })
@@ -166,6 +171,7 @@ export default function ServerBoard({ server, channels, people, me, header, prof
 
   const total = people.length
   return <section ref={root} className={'server-board' + (leaving ? ' is-leaving' : '') + (returning ? ' is-returning' : '')}>
+    <canvas ref={canvas} className="board-field" aria-hidden/>
     <header className="board-bar">
       {header}
       <span className="board-meta">{channels.length} {channels.length === 1 ? 'mesa' : 'mesas'} · {total} {total === 1 ? 'pessoa' : 'pessoas'}</span>

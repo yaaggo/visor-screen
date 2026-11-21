@@ -113,7 +113,10 @@ export function photoMask(url, width, height, { cosmic = false } = {}) {
   return entry
 }
 
-export function createAsciiField(canvas, { reduced = false } = {}) {
+// light: versao das salas (por tras das transmissoes): menos quadros, textura recalculada mais devagar,
+// lente menor e sem empurrar os caracteres.
+export function createAsciiField(canvas, { reduced = false, light = false } = {}) {
+  const cfg = light ? { idle: 6, busy: 20, baseMs: 420, lens: 110, gain: .26, push: 0 } : { idle: 12, busy: 30, baseMs: 140, lens: 150, gain: .42, push: 4 }
   const ctx = canvas.getContext('2d')
   let dpr = 1, w = 0, h = 0, cols = 0, rows = 0, rect = { left: 0, top: 0 }
   let atlas = null, values, offX, offY, scr, layer = null, lctx = null, baseDirty = true, baseCode
@@ -181,7 +184,7 @@ export function createAsciiField(canvas, { reduced = false } = {}) {
     const cx = w / 2, cy = h / 2, maxD = Math.hypot(cx, cy)
     // A textura anda devagar: recalcula no maximo a cada 140 ms (50 ms arrastando) e fica numa camada pronta,
     // desenhada inteira com um drawImage; nos quadros so as celulas mexidas pelos efeitos sao redesenhadas.
-    if (now - lastBase > (dragAmt ? 50 : 140) || now < lastBase) {
+    if (now - lastBase > (dragAmt ? 50 : cfg.baseMs) || now < lastBase) {
     lastBase = now; baseDirty = true
     for (let r = 0, i = 0; r < rows; r++) {
       const y = r * CH + CH / 2
@@ -203,7 +206,7 @@ export function createAsciiField(canvas, { reduced = false } = {}) {
 
     // Lente do mouse e rastro.
     pointer.amt += ((pointer.on && !reduced ? 1 : 0) - pointer.amt) * .15
-    if (pointer.amt > .01) addRadial(pointer.x, pointer.y, 150, .42 * pointer.amt, 4 * pointer.amt)
+    if (pointer.amt > .01) addRadial(pointer.x, pointer.y, cfg.lens, cfg.gain * pointer.amt, cfg.push * pointer.amt)
     for (let k = trail.length - 1; k >= 0; k--) {
       const age = now - trail[k].t
       if (age > 450) { trail.splice(k, 1); continue }
@@ -357,7 +360,7 @@ export function createAsciiField(canvas, { reduced = false } = {}) {
       lastBeacon = now
       for (const p of beaconFn() || []) { const [x, y] = local(p.x, p.y); waves.push({ x, y, t: now, speed: 110, width: 22, strength: .17, life: 2300, soft: true }) }
     }
-    const interval = busy(now) ? 1000 / 30 : 1000 / 12
+    const interval = busy(now) ? 1000 / cfg.busy : 1000 / cfg.idle
     if (now - lastDraw < interval - 2) return
     lastDraw = now
     draw(now)

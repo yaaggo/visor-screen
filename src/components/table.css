@@ -2,7 +2,7 @@
 .card-table { --hw:clamp(70px,13cqh,92px); --hh:calc(var(--hw)*1.34); position:absolute; inset:16px; display:flex; flex-direction:column; container-type:size }
 .table-felt { position:relative; flex:1; min-height:0; margin-bottom:calc(var(--hh)*.78 + 14px); border-radius:var(--r-xl); transition:box-shadow .25s }
 .card-table.no-hand .table-felt { margin-bottom:20px }
-.table-felt.is-empty { border:1px solid #ffffff1c; background:radial-gradient(ellipse at 50% 46%,#141414,#0b0b0b 70%) }
+.table-felt.is-empty { border:1px solid #ffffff1c; background:radial-gradient(ellipse at 50% 46%,rgb(20 20 20 / .8),rgb(11 11 11 / .66) 70%) }
 .card-table.is-dragging .table-felt { box-shadow:inset 0 0 0 1px #ffffff26 }
 .table-felt.is-near { box-shadow:inset 0 0 0 1px #ffffff70,inset 0 0 70px #ffffff0a }
 
@@ -137,3 +137,7 @@
 /* Cartas de pessoas na mao: a foto ocupa todo o quadro interno */
 .hand-art > .avatar { border:0; position:absolute; inset:0; width:100% !important; height:100% !important; border-radius:inherit; font-size:30px !important; display:grid; place-items:center }
 .hand-art .live-dot { z-index:1 }
+
+/* Campo ASCII leve atras da mesa (useAsciiField light): aparece em volta da mesa e, de leve, atraves da mesa vazia */
+.stage-wrap.with-table { isolation:isolate }
+.room-field { position:absolute; inset:0; width:100%; height:100%; z-index:-1; pointer-events:none; opacity:.8 }

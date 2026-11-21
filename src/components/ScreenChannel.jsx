@@ -13,6 +13,7 @@ import CardTable from './CardTable.jsx'
 import MiniPlayer, { openMiniWindow } from './MiniPlayer.jsx'
 import { ReplayBuffer, replaySupported } from '../lib/replay.js'
 import { AppAudioMixer } from '../lib/appAudio.js'
+import { useAsciiField } from '../lib/useAsciiField.js'
 import { play } from '../lib/sound.js'
 import TextChannel from './TextChannel.jsx'
 
@@ -97,6 +98,9 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
   const [ownOnTable, setOwnOnTable] = useState(true)
   const [pip, setPip] = useState(null) // { id, win } transmissao no miniplayer
   const placedAt = useRef(new Map())
+  // Campo ASCII leve no fundo da sala (6 fps parado); para enquanto voce transmite ou com a sala fora da tela.
+  const fieldCanvas = useRef(null)
+  useAsciiField(fieldCanvas, { light: true, paused: s.sharing || !visible, background: t => t.matches?.('.card-table, .table-felt.is-empty, .table-slot, .hand') })
   const needsAudioApps = cfg.kind !== 'device' && (panelOpen || (s.sharing && cfg.audioMode === 'all' && cfg.exclude.length > 0))
   const apps = useAudioApps(needsAudioApps)
   const targetKey = JSON.stringify(audioTargets(cfg, apps))
@@ -311,6 +315,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
   return (
     <div className={`screen ${chat && chatChannel ? 'with-chat' : ''}`}>
       <div className="stage-wrap with-table">
+        <canvas ref={fieldCanvas} className="room-field" aria-hidden/>
         <CardTable
           tiles={tiles.map(tile => {
             const peer = allPeers.find(p => p.id === tile.id)

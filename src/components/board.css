@@ -89,3 +89,7 @@
 /* Sua carta: a foto ocupa todo o quadro interno (sem circulo) */
 .seat-art { overflow:hidden; place-items:stretch }
 .seat-art .avatar { border:0; width:100% !important; height:100% !important; border-radius:inherit; font-size:38px !important; display:grid; place-items:center }
+
+/* Campo ASCII atras das mesas (useAsciiField): o fundo do tabuleiro deixa de ser so preto */
+.server-board { isolation:isolate }
+.board-field { position:absolute; inset:0; width:100%; height:100%; z-index:-1; pointer-events:none }
