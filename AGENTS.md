@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-21, versao 1.14.0 (ping, miniplayer, replay F9 e pagina de clipes).
+Ultima atualizacao: 2026-11-21, versao 1.15.0 (miniplayer arrastavel para fora do app, mesa de clipes, corpos celestes, campo ASCII nas salas).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -45,6 +45,7 @@ electron/
   capture.cjs      fonte selecionada, ciclo de vida do motor Rust e texturas compartilhadas
   capture-rs/      helper Rust (WGC/D3D11) usado pelo motor experimental
   clips.cjs        pasta Videos\Visor Clips (salvar/listar/ler/Lixeira) e F9 global do replay
+  mini.cjs         janela do miniplayer: segue o cursor, tamanho animado, gruda nas bordas, avisa o cursor sobre o app
   native/visor-audio.cpp   helper nativo; build.cmd compila em native/bin/
   icon.png, icon.ico
 src/
@@ -60,11 +61,14 @@ src/
   lib/appAudio.js  AppAudioMixer: AudioWorklet por app -> MediaStreamDestination (1 track)
   lib/replay.js    ReplayBuffer: dois MediaRecorder defasados para o F9
   lib/asciiField.js, lib/radar.js, lib/topics.js   campo ASCII do deck, radar de presenca, canais calls:<id> compartilhados
+  lib/useAsciiField.js   campo ASCII de fundo (tabuleiro; light nas salas)
+  lib/celestial.js       capa dos servidores sem foto (8 SVG em src/assets/celestial, gerados por scripts/celestial.mjs)
+  lib/nav.js             de onde a pagina veio (animacao deck <-> clipes)
   lib/net.js       measureUpload(): 4 envios paralelos de 4 MB, RTT aquecido
   components/Login.jsx, Shell.jsx, TextChannel.jsx, ui.jsx
   components/ScreenChannel.jsx   palco + volume do espectador + ilha
   components/SharePanel.jsx      painel da ilha: fonte, grade de janelas, audio, replay, qualidade, JellySlider
-  components/MiniPlayer.jsx      miniplayer (janela Electron / Document PiP / cartao flutuante)
+  components/MiniPlayer.jsx      miniplayer (janela Electron carta/player / Document PiP / cartao flutuante)
   components/ClipsPage.jsx       pagina #/clips: leque de clipes + player
 supabase/config.toml   config declarativa MINIMA (so auth). `config push` so altera o que esta aqui
 supabase/migrations/20261118112523_visor.sql   schema (ja aplicado no remoto)
@@ -247,6 +251,35 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.15.0 — miniplayer, mesa de clipes, corpos celestes e campo ASCII nas salas (2026-11-21). Um commit por recurso:
+- Replay: transmitindo no Mudo (ou dispositivo sem audio), o clipe grava o som do sistema menos o Visor num
+  AppAudioMixer so do replay (`ReplayBuffer.addTrack` reinicia os gravadores). Verificado com ffmpeg volumedetect:
+  clipes com som tanto no modo Tudo quanto no Mudo. A borda arredondada interna do deck (`.server-hub`) saiu.
+- Servidores sem foto: um de 8 corpos celestes (saturno, gigante gasoso, lua, estrela, buraco negro, galaxia, cometa,
+  planeta com lua), escolhido por hash do id (`celestialFor`), como data URL (o canvas da foto ASCII le em file://).
+  `serverPhotoUrl` devolve sempre uma imagem. Na foto ASCII, `photoMask(..., { cosmic })`: fundo preto = -2 (o campo
+  continua), contraste esticado so no corpo, caixa ate 1,9x maior.
+- Clipes: cartas com data-z (fisica do deck; antes atravessavam e trocavam devagar por falta dele). Mesa no centro com
+  feltro e aro das mesas do tabuleiro, do tamanho de uma carta; carta solta (ou clicada) nela faz a onda do deck e a
+  mesa cresce ate 16:9 (mola); puxar o video vira carta e a mesa encolhe; outra carta troca o video (o antigo esmaece).
+  Botao de mudo. Deck -> clipes: o leque desce e os clipes sobem um a um; volta: o inverso (`nav.js`, `is-dealing`).
+  DeckLab leva a `#/clips-teste` (so dev, Electron).
+- Campo ASCII no tabuleiro do servidor e versao light nas salas (6 fps parado, 20 com mouse). Medido na sala 1440x900:
+  0,3% de um nucleo parado, 1,5% com o mouse (tempo de JS). Para transmitindo ou com a sala fora da tela.
+  `window.__fields` em dev.
+- Miniplayer desktop (`electron/mini.cjs`): janela transparente sempre no topo; o processo principal segue o cursor real
+  (`getCursorScreenPoint`) a cada 8 ms. Ao levantar uma transmissao a janela abre escondida; quando a carta ficaria cortada
+  pela borda (esquerda, direita, topo ou fora por baixo) ela vira a janela sob o cursor (~120 ms); soltar fora cresce ate
+  o player onde soltou, dentro da tela e grudando nas bordas. O player arrasta por qualquer ponto (a regiao de arrastar
+  antiga nao funcionava na janela do window.open), roda do mouse muda o tamanho (largura em `visor.miniWidth`), duplo
+  clique volta. Arrastado sobre o app vira carta, a mesa/mao acende (`ghost`) e soltar devolve a mesa naquela posicao ou
+  para de ver (mao). Na mao fica uma carta tracejada do miniplayer (clicar ou arrastar devolve). O 'load' de
+  about:blank nunca chega nessa janela: espera-se so readyState (antes eram 1,5 s fixos).
+- QA: Electron dev com mouse real do Windows (SetCursorPos/mouse_event) e conta temporaria apagada: arrastar para fora,
+  mover, grudar no canto, roda, voltar para a mesa, soltar na mao e botao voltar. Transicoes e mesa de clipes via CDP.
+  Nao verificado: miniplayer sobre jogo em tela cheia exclusiva, varios monitores com escalas diferentes, Document PiP no
+  Chrome.
 
 1.14.0 — ping, miniplayer, replay F9 e clipes (2026-11-21). Um commit por recurso:
 - Foto em ASCII do deck centralizada (mesmo centro da vaga/iniciais) e com tamanho de ~1,15 carta (`photoBox`).
