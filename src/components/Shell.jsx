@@ -10,6 +10,7 @@ import { useRadar } from '../lib/radar.js'
 import { acquireTopic, presenceList } from '../lib/topics.js'
 import { Avatar, CopyButton, IconButton, ServerFace, usePopover } from './ui.jsx'
 import ServerHub from './ServerHub.jsx'
+import ClipsPage from './ClipsPage.jsx'
 import UpdateButton from './UpdateButton.jsx'
 import Tooltips from './Tooltips.jsx'
 import ProfilePhoto from './ProfilePhoto.jsx'
@@ -98,7 +99,7 @@ function coverFlight(move, item) {
 }
 
 export default function Shell({ profile }) {
-  const { serverId, channelId } = useRoute()
+  const { serverId, channelId, clips } = useRoute()
   const [servers, setServers] = useLive('servers', null, 'created_at', [])
   const [channels, setChannels] = useLive('channels', serverId ? ['server_id', serverId] : false, 'created_at', [serverId])
   const [collapsed, setCollapsed] = useState(false)
@@ -426,7 +427,8 @@ export default function Shell({ profile }) {
           <div id="call-head-slot" className="head-slot"/>
         </header>}
         <div className="main-body">
-          {!serverId && servers && <ServerHub call={call ? { server:servers.find(s => s.id === call.server_id), name:call.name, connected,
+          {!serverId && clips && window.visor?.clips && <ClipsPage onBack={() => go(null)}/>}
+          {!serverId && !(clips && window.visor?.clips) && servers && <ServerHub call={call ? { server:servers.find(s => s.id === call.server_id), name:call.name, connected,
               live:visitors.some(v => (v.endpointId ?? v.id) === endpointId && v.channel === call.id && v.sharing) } : null}
             onResume={node => { const row = servers.find(s => s.id === call?.server_id); if (row) openServer(row, node) }} onHangup={disconnect}
             activity={radar} ownerId={profile.id} onDelete={deleteServer} onLeave={leaveServer} returningId={origin.current?.id} servers={servers} onSubmit={submitServer} onOpen={openServer} editProfile={() => setEditing(true)} logout={logout}/>}

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 // Rotas por hash: #/s/<serverId>/<channelId>
 function parse() {
   const [, kind, serverId, channelId] = location.hash.replace(/^#/, '').split('/')
-  return kind === 's' ? { serverId: serverId || null, channelId: channelId || null } : { serverId: null, channelId: null }
+  return kind === 's' ? { serverId: serverId || null, channelId: channelId || null } : { serverId: null, channelId: null, clips: kind === 'clips' }
 }
 
 export function useRoute() {

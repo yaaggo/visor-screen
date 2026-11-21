@@ -1,0 +1,41 @@
+/* Pagina de clipes (ClipsPage.jsx): leque de cartas do deck + player no centro */
+.clips-bar { justify-content: flex-start }
+.clips-tools { display: flex; align-items: center; gap: 6px; -webkit-app-region: no-drag }
+.clips-title { display: flex; align-items: center; gap: 8px; padding: 0 8px; font-size: 16px; font-weight: 650; letter-spacing: -.03em }
+.clips-icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; color: var(--muted); transition: background .15s, color .15s }
+.clips-icon:hover { background: var(--hover); color: var(--text) }
+
+/* Player: o lugar dos clipes, no espaco entre a barra e o leque (container para medir a altura livre) */
+.clips-area { position: absolute; left: 0; right: 0; top: 68px; bottom: calc(var(--ch) + clamp(46px,7vh,76px) + 44px); z-index: 3;
+  container-type: size; display: grid; place-items: center; pointer-events: none }
+.clips-stage { position: relative; width: min(72cqw, 100cqh * 16 / 9); aspect-ratio: 16 / 9; pointer-events: auto;
+  border-radius: 22px; border: 1px dashed #ffffff26; display: grid; place-items: center; overflow: hidden;
+  transition: border-color .2s, background .2s, box-shadow .3s }
+.clips-stage.is-near { border-color: #ffffffb0; background: #ffffff08; box-shadow: 0 0 0 4px #ffffff10 }
+.clips-stage.has-clip { border-style: solid; border-color: #ffffff2e; background: #050505; box-shadow: 0 24px 70px #000b }
+.clips-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; color: #6a6a6a }
+.clips-empty kbd { font: 600 11px ui-monospace, monospace; padding: 3px 8px; border-radius: 6px; border: 1px solid #ffffff26; color: var(--muted) }
+
+.clip-player { position: absolute; inset: 0; display: grid; animation: clip-in .4s cubic-bezier(.22,1,.36,1) both }
+@keyframes clip-in { from { opacity: 0; scale: .97 } }
+.clip-player video { width: 100%; height: 100%; object-fit: contain; grid-area: 1 / 1; cursor: pointer; background: #050505 }
+.clip-bar { grid-area: 1 / 1; align-self: end; display: flex; align-items: center; gap: 8px; padding: 12px 14px;
+  background: linear-gradient(#0000, #000d); opacity: 0; transition: opacity .2s }
+.clip-player:hover .clip-bar, .clip-player:focus-within .clip-bar, .clip-player video:not([src]) + .clip-bar { opacity: 1 }
+.clip-btn { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: 999px; color: var(--text);
+  background: #000b; border: 1px solid #ffffff24; transition: background .15s, transform .15s }
+.clip-btn:hover { background: #fff; color: #0a0a0a }
+.clip-btn:active { transform: scale(.92) }
+.clip-range { flex: 1; min-width: 60px; width: auto; opacity: 1 }
+.clip-range:focus-visible { width: auto }
+.clip-time { font-size: 11px; color: var(--muted); white-space: nowrap }
+
+/* Cartas dos clipes: a miniatura ocupa a arte; duracao no canto */
+.clip-card .deck-art { position: relative; font-size: 0 }
+.clip-card .deck-art img { width: 100%; height: 100%; object-fit: cover }
+.clip-dur { position: absolute; right: 6px; bottom: 6px; padding: 1px 6px; border-radius: 6px; font-size: 10px; font-weight: 600;
+  letter-spacing: 0; text-transform: none; color: #fff; background: #000c }
+.clip-card.is-playing { border-color: #ffffffb0 }
+.clip-flying { position: fixed !important; margin: 0; translate: none !important; rotate: 0deg !important; scale: 1 !important;
+  z-index: 999; transition: none !important; pointer-events: none }
+@media (prefers-reduced-motion: reduce) { .clip-player { animation: none } }

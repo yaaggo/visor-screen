@@ -2135,7 +2135,9 @@ button:disabled {
 }
 .hub-titlebar { position:absolute; top:0; left:0; right:0; height:56px; display:flex; align-items:center; padding:0 24px; z-index:2 }
 .is-desktop .hub-titlebar { -webkit-app-region:drag }
-.hub-account { position:relative; -webkit-app-region:no-drag }
+.hub-account { position:relative; -webkit-app-region:no-drag; display:flex; align-items:center; gap:4px }
+.hub-clips { display:grid; place-items:center; width:30px; height:30px; margin-left:6px; border-radius:9px; color:var(--muted); transition:background .15s,color .15s }
+.hub-clips:hover { background:var(--hover); color:var(--text) }
 .hub-brand,.hub-account-menu button { display:flex; align-items:center; gap:9px }
 .hub-brand { font-size:18px; font-weight:650; letter-spacing:-.035em }
 .hub-account-menu { position:absolute; top:calc(100% + 12px); padding:5px; background:var(--raised); border:1px solid var(--line); border-radius:12px; animation:rise var(--t-med) var(--spring) both }

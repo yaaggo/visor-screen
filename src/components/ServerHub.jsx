@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import { ArrowLeft, ArrowRight, Cast, ChevronLeft, ChevronRight, DoorOpen, Layers, LogIn, LogOut, Plus, Radio, Trash2, UserRound, Users, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Cast, ChevronLeft, ChevronRight, Clapperboard, DoorOpen, Layers, LogIn, LogOut, Plus, Radio, Trash2, UserRound, Users, X } from 'lucide-react'
 import { ServerFace, serverInitials, serverPhotoUrl, usePopover } from './ui.jsx'
 import './deck.css'
 import { play } from '../lib/sound.js'
@@ -21,7 +21,7 @@ function spring(k, damping) {
   }
   return 'linear(' + samples.join(',') + ')'
 }
-const springs = { '--fan':spring(220,18), '--lift':spring(420,20), '--scale':spring(420,22), '--settle':spring(280,22) }
+export const springs = { '--fan':spring(220,18), '--lift':spring(420,20), '--scale':spring(420,22), '--settle':spring(280,22) }
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches
 const serversPerPage = 3
 
@@ -431,6 +431,7 @@ export default function ServerHub({ servers, ownerId, onDelete, onLeave, returni
     <div ref={peek} className="deck-peek" aria-hidden><span><Users size={13}/><b data-count="people"/></span><span className="peek-live"><Radio size={13}/><b data-count="live"/></span></div>
     <header className="hub-titlebar"><div ref={account.ref} className="hub-account">
       <button className="hub-brand" aria-label="Menu da conta" aria-expanded={account.open} onClick={()=>account.setOpen(!account.open)}><i className="brand-mark" aria-hidden/>Visor</button>
+      {window.visor?.clips && <button className="hub-clips" aria-label="Clipes" data-tip="Clipes" onClick={() => { location.hash = '#/clips' }}><Clapperboard size={16} strokeWidth={1.8}/></button>}
       {account.open && <div className="hub-account-menu"><button onClick={()=>{account.setOpen(false);editProfile()}}><UserRound size={15}/>Perfil</button><SoundToggle size={15}/><button onClick={logout}><LogOut size={15}/>Sair</button></div>}
     </div></header>
     <div ref={center} className={'deck-center step-'+step}>
