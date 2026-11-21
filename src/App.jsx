@@ -10,7 +10,9 @@ const TableLab = import.meta.env.DEV ? lazy(() => import('./components/TableLab.
 const DeckLab = import.meta.env.DEV ? lazy(() => import('./components/DeckLab.jsx')) : null
 // Pagina dos sons: #/sons (sem login, tambem na versao publicada)
 const SoundLab = lazy(() => import('./components/SoundLab.jsx'))
-const page = () => location.hash === '#/sons' ? 'sons' : TableLab && location.hash === '#/mesa-teste' ? 'mesa' : DeckLab && location.hash.startsWith('#/deck-teste') ? 'deck' : null
+// Clipes de teste: so no `npm run dev` no Electron, em #/clips-teste (sem login; volta para o deck de teste).
+const ClipsPage = import.meta.env.DEV ? lazy(() => import('./components/ClipsPage.jsx')) : null
+const page = () => location.hash === '#/sons' ? 'sons' : TableLab && location.hash === '#/mesa-teste' ? 'mesa' : DeckLab && location.hash.startsWith('#/deck-teste') ? 'deck' : ClipsPage && window.visor?.clips && location.hash === '#/clips-teste' ? 'clips' : null
 
 export default function App() {
   const [lab, setLab] = useState(page)
@@ -40,7 +42,7 @@ export default function App() {
     return () => sub.subscription.unsubscribe()
   }, [])
 
-  if (lab) return <Suspense fallback={null}>{lab === 'sons' ? <SoundLab/> : lab === 'deck' ? <DeckLab/> : <TableLab/>}</Suspense>
+  if (lab) return <Suspense fallback={null}>{lab === 'sons' ? <SoundLab/> : lab === 'deck' ? <DeckLab/> : lab === 'clips' ? <div style={{ position: 'fixed', inset: 0, display: 'grid' }}><ClipsPage onBack={() => { location.hash = '#/deck-teste' }}/></div> : <TableLab/>}</Suspense>
   if (state.loading) return <div className="boot"><span className="boot-dot" /></div>
   if (!state.profile) return <Login onReady={(session, profile) => setState({ loading: false, session, profile })} />
   return <Shell profile={state.profile} />

@@ -7,6 +7,7 @@ import { play } from '../lib/sound.js'
 import SoundToggle from './SoundToggle.jsx'
 import { attachFanPhysics } from '../lib/fanPhysics.js'
 import { createAsciiField, photoMask } from '../lib/asciiField.js'
+import { arrivedFrom } from '../lib/nav.js'
 
 // Sample a unit-mass spring in four substeps per 60 Hz frame, as in Fan Cards.
 function spring(k, damping) {
@@ -34,7 +35,7 @@ function Face({server, live}) {
 }
 
 // activity (opcional): { [serverId]: { people, live } } vindo da presenca; acende cartas, aneis e contagens.
-export default function ServerHub({ servers, ownerId, onDelete, onLeave, returningId, onOpen, onSubmit, editProfile, logout, call, onResume, onHangup, activity }) {
+export default function ServerHub({ servers, ownerId, onDelete, onLeave, returningId, onOpen, onSubmit, editProfile, logout, call, onResume, onHangup, activity, clipsRoute = '#/clips' }) {
   const account = usePopover()
   // A call em andamento fica no centro do deck, fora da mao.
   const inHand = list => list.filter(s => s.id !== call?.server?.id)
@@ -58,6 +59,20 @@ export default function ServerHub({ servers, ownerId, onDelete, onLeave, returni
   const field = useRef(null)
   const peek = useRef(null)
   const hovered = useRef(undefined)
+  // Ida para os clipes: o leque desce, o campo apaga o centro e a onda sai do botao; so entao a rota muda.
+  // Voltando dos clipes, as cartas sobem uma a uma (deal).
+  const [leaving, setLeaving] = useState(false)
+  const [dealing, setDealing] = useState(() => arrivedFrom('clips'))
+  useLayoutEffect(() => { if (!dealing) return; const t = setTimeout(() => setDealing(false), 1000); return () => clearTimeout(t) }, [])
+  function goClips(e) {
+    if (leaving || held.current) return
+    play('open')
+    setLeaving(true)
+    field.current?.glyph(null)
+    const r = e.currentTarget.getBoundingClientRect()
+    field.current?.wave(r.left + r.width / 2, r.top + r.height / 2, { strength:.45, width:40, life:700 })
+    setTimeout(() => { location.hash = clipsRoute }, reduced() ? 0 : 300)
+  }
   const hub = useRef({ step, call:null, activity })
   hub.current = { step, call, activity }
   // Campo ASCII atras do deck: lente do mouse, onda ao tocar o fundo e aneis das cartas ao vivo.
@@ -429,13 +444,13 @@ export default function ServerHub({ servers, ownerId, onDelete, onLeave, returni
     flight.onfinish = () => { ghost.remove(); slot.style.opacity = '' }
   }
   const callTip = call ? (call.live ? 'Transmitindo em ' : 'Na sala ') + call.name : ''
-  return <section className="server-hub deck-hub" aria-label="Deck de servidores" style={springs}
+  return <section className={'server-hub deck-hub' + (leaving ? ' is-leaving' : '') + (dealing ? ' is-dealing' : '')} aria-label="Deck de servidores" style={springs}
     onKeyDown={e=>{if(e.key==='Escape' && !busy && ['choose','create','join'].includes(step))reset()}}>
     <canvas ref={canvas} className="deck-field" aria-hidden/>
     <div ref={peek} className="deck-peek" aria-hidden><span><Users size={13}/><b data-count="people"/></span><span className="peek-live"><Radio size={13}/><b data-count="live"/></span></div>
     <header className="hub-titlebar"><div ref={account.ref} className="hub-account">
       <button className="hub-brand" aria-label="Menu da conta" aria-expanded={account.open} onClick={()=>account.setOpen(!account.open)}><i className="brand-mark" aria-hidden/>Visor</button>
-      {window.visor?.clips && <button className="hub-clips" aria-label="Clipes" data-tip="Clipes" onClick={() => { location.hash = '#/clips' }}><Clapperboard size={16} strokeWidth={1.8}/></button>}
+      {window.visor?.clips && <button className="hub-clips" aria-label="Clipes" data-tip="Clipes" onClick={goClips}><Clapperboard size={16} strokeWidth={1.8}/></button>}
       {account.open && <div className="hub-account-menu"><button onClick={()=>{account.setOpen(false);editProfile()}}><UserRound size={15}/>Perfil</button><SoundToggle size={15}/><button onClick={logout}><LogOut size={15}/>Sair</button></div>}
     </div></header>
     <div ref={center} className={'deck-center step-'+step}>
@@ -461,7 +476,7 @@ export default function ServerHub({ servers, ownerId, onDelete, onLeave, returni
     </button>}
     <div ref={hand} className="deck-hand" inert={step!=='idle'} style={{'--gaps':Math.max(1,cards.length-1)}}>
       {cards.map((server,i)=><button key={server?.id ?? 'add'} data-server={server?.id} aria-label={server?.name ?? 'Adicionar servidor'}
-        className={'deck-card'+(server?'':' deck-add')} data-drawn={draw && draw.id===(server?.id ?? null) ? true : undefined} data-z={cards.length-i} style={{'--d':i-(cards.length-1)/2,'--abs':Math.abs(i-(cards.length-1)/2),'--z':cards.length-i}}
+        className={'deck-card'+(server?'':' deck-add')} data-drawn={draw && draw.id===(server?.id ?? null) ? true : undefined} data-z={cards.length-i} style={{'--d':i-(cards.length-1)/2,'--abs':Math.abs(i-(cards.length-1)/2),'--z':cards.length-i,'--i':i}}
         data-live={server && activity?.[server.id]?.live ? '' : undefined}
         onPointerEnter={()=>focusCard(server)} onPointerLeave={()=>focusCard(undefined)} onFocus={()=>focusCard(server)} onBlur={()=>focusCard(undefined)}
         onPointerDown={e=>begin(e,server)}

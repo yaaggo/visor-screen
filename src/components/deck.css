@@ -146,3 +146,11 @@
 .deck-peek[data-live=false] .peek-live { display:none }
 /* ponto ao vivo na carta do servidor com transmissao */
 .deck-live { position:absolute; top:17px; right:17px; z-index:1 }
+
+/* ida para os clipes: o leque desce e o resto apaga; volta dos clipes: as cartas sobem uma a uma */
+.deck-hub.is-leaving { pointer-events:none }
+.deck-hub.is-leaving .deck-hand { translate:0 170%; opacity:0; transition:translate .3s cubic-bezier(.5,0,.75,0),opacity .26s ease-in }
+.deck-hub.is-leaving :is(.deck-footer,.deck-peek,.deck-callcard,.deck-center) { opacity:0; transition:opacity .22s }
+.deck-hub.is-dealing .deck-card { animation:deck-deal .72s calc(var(--i,0) * 55ms) var(--settle) backwards }
+@keyframes deck-deal { from { transform:translateY(150%) rotate(calc(var(--d,0) * -6deg)); opacity:0 } }
+@media(prefers-reduced-motion:reduce){ .deck-hub.is-dealing .deck-card{animation:none} .deck-hub.is-leaving .deck-hand{transition:none} }

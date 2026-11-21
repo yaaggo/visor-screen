@@ -24,7 +24,7 @@ export default function DeckLab() {
       onOpen={s => note('abriu ' + (s?.name ?? '?'))} onSubmit={async (_, name) => { const row = { id: 'lab-' + Date.now(), name, owner_id: ME }; setServers(s => [...s, row]); return row }}
       editProfile={() => {}} logout={() => setServers(start())}
       call={call && { server: servers.find(x => x.id === call.serverId), name: call.name, live: call.live, connected: true }}
-      activity={location.hash.includes('quieto') ? null : ACTIVITY} onResume={() => note('voltou para a call')} onHangup={() => { setCall(null); note('desligou') }}/>
+      activity={location.hash.includes('quieto') ? null : ACTIVITY} clipsRoute="#/clips-teste" onResume={() => note('voltou para a call')} onHangup={() => { setCall(null); note('desligou') }}/>
     <div data-lab-log style={{ position: 'fixed', left: 12, top: 44, font: '12px system-ui', color: '#888', pointerEvents: 'none' }}>{log.map((l, i) => <div key={i}>{l}</div>)}</div>
     <div style={{ position: 'fixed', left: 16, bottom: 16 }}>
       <button className="seat-card" aria-label="Sua carta"><span className="seat-art"><Avatar id="lab" name="yago" size={46}/></span><span className="seat-name">yago</span></button>
