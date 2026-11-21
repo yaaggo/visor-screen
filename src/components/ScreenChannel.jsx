@@ -10,6 +10,7 @@ import { captureDesktop, captureDevice, captureWeb } from '../lib/sources.js'
 import { Avatar, IconButton } from './ui.jsx'
 import SharePanel, { exeKey, pref, useShareConfig } from './SharePanel.jsx'
 import CardTable from './CardTable.jsx'
+import MiniPlayer, { openMiniWindow } from './MiniPlayer.jsx'
 import { play } from '../lib/sound.js'
 import TextChannel from './TextChannel.jsx'
 
@@ -92,6 +93,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
   const [panelOpen, setPanelOpen] = useState(false) // painel de transmitir (a carta + aberta)
   const stopShare = () => { roomRef.current.stopShare(); captureRef.current = null; play('stop') }
   const [ownOnTable, setOwnOnTable] = useState(true)
+  const [pip, setPip] = useState(null) // { id, win } transmissao no miniplayer
   const placedAt = useRef(new Map())
   const needsAudioApps = cfg.kind !== 'device' && (panelOpen || (s.sharing && cfg.audioMode === 'all' && cfg.exclude.length > 0))
   const apps = useAudioApps(needsAudioApps)
@@ -235,8 +237,17 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
   }
 
   const inputs = s.inputs ?? []
-  const tiles = inputs.filter(input => !input.preview)
-  if (s.sharing && ownOnTable) tiles.unshift({ id: endpointId, stream: s.local })
+  const allTiles = inputs.filter(input => !input.preview)
+  if (s.sharing && ownOnTable) allTiles.unshift({ id: endpointId, stream: s.local })
+  // Miniplayer: a transmissao sai da mesa mas continua sendo recebida; fechar a janela devolve a mesa.
+  const pipTile = pip && allTiles.find(t => t.id === pip.id)
+  const tiles = allTiles.filter(t => t !== pipTile)
+  useEffect(() => { if (pip && !pipTile) setPip(null) }, [pip, !!pipTile])
+  const openPip = id => {
+    const v = allTiles.find(t => t.id === id)?.stream?.getVideoTracks()[0]?.getSettings()
+    openMiniWindow(v?.width && v?.height ? v.width / v.height : 16 / 9)
+      .then(win => setPip({ id, win }), () => setPip({ id, win: null }))
+  }
   const toggle = (id, peerHint = null) => {
     const room = roomRef.current
     if (room.inputs.has(id) && !room.inputs.get(id).preview) room.stopWatching(id)
@@ -269,7 +280,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
           })}
           hand={[
             ...(s.sharing && !ownOnTable ? [{ id: endpointId, own: true, name: profile.username, profileId: profile.id, photo, device: deviceKind }] : []),
-            ...allPeers.filter(p => p.sharing && p.id !== endpointId && !tiles.some(t => t.id === p.id)).map(p => ({
+            ...allPeers.filter(p => p.sharing && p.id !== endpointId && !allTiles.some(t => t.id === p.id)).map(p => ({
               ...p, peek: hover?.id === p.id ? inputs.find(v => v.id === p.id)?.stream ?? null : null,
             })),
           ]}
@@ -301,11 +312,16 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
             if (id === endpointId) setOwnOnTable(false)
             else roomRef.current.stopWatching(id)
           }}
+          onPip={openPip}
           renderStage={(tile, tools) => <Stage tools={tools} stream={tile.stream} local={tile.own} stats={tile.stats} room={roomRef.current} streamId={tile.id}
             sendStats={s.sendStats} captureEngine={s.captureEngine} captureStats={s.captureStats}
             hasAudio={!tile.own && !!tile.stream?.getAudioTracks().length} watchingName={tile.name}/>}
         />
 
+        {pipTile && <MiniPlayer key={pip.id + (pip.win ? ':w' : ':f')} win={pip.win} stream={pipTile.stream} local={pipTile.id === endpointId}
+          name={allPeers.find(p => p.id === pipTile.id)?.name ?? ''}
+          onBack={() => setPip(null)}
+          onClose={() => { if (pipTile.id === endpointId) setOwnOnTable(false); else roomRef.current.stopWatching(pipTile.id); setPip(null) }}/>}
         {chatChannel && (
           <IconButton
             label={chat ? 'Fechar chat da chamada' : 'Abrir chat da chamada'}

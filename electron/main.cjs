@@ -1,6 +1,6 @@
 // Visor desktop (Electron). Carrega o build web (dist/) e adiciona:
 // seletor nativo de tela/janela, captura de audio por aplicativo e permissoes de midia.
-const { app, BrowserWindow, desktopCapturer, ipcMain, session, shell } = require('electron')
+const { app, BrowserWindow, desktopCapturer, ipcMain, screen, session, shell } = require('electron')
 const path = require('node:path')
 const audio = require('./audio.cjs')
 const registerCapture = require('./capture.cjs')
@@ -58,9 +58,26 @@ function createWindow() {
   win.once('ready-to-show', () => win.show())
 
   // Links externos abrem no navegador; navegacao interna bloqueada
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  win.webContents.setWindowOpenHandler(({ url, frameName, features }) => {
+    // Miniplayer: janela em branco aberta pelo proprio app (o React desenha nela o video da transmissao).
+    // Sem moldura e sempre no topo, inclusive sobre jogos em tela cheia sem borda.
+    if (frameName === 'visor-mini' && url === 'about:blank') {
+      const size = Object.fromEntries(features.split(',').map(f => f.split('=')).map(([k, v]) => [k.trim(), Number(v)]))
+      const width = Math.max(240, Math.min(960, size.width || 420)), height = Math.max(135, Math.min(720, size.height || 236))
+      const area = screen.getDisplayMatching(win.getBounds()).workArea
+      return { action: 'allow', overrideBrowserWindowOptions: {
+        width, height, x: area.x + area.width - width - 24, y: area.y + area.height - height - 24,
+        minWidth: 240, minHeight: 135, frame: false, alwaysOnTop: true, maximizable: false, fullscreenable: false,
+        backgroundColor: '#050505', title: 'Visor', autoHideMenuBar: true, roundedCorners: true, icon: path.join(__dirname, 'icon.png'),
+        webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false },
+      } }
+    }
     if (/^https?:/.test(url)) shell.openExternal(url)
     return { action: 'deny' }
+  })
+  win.webContents.on('did-create-window', child => {
+    child.setAlwaysOnTop(true, 'screen-saver')
+    child.webContents.on('will-navigate', e => e.preventDefault())
   })
   win.webContents.on('will-navigate', (e, url) => {
     if (DEV_URL && url.startsWith(DEV_URL)) return

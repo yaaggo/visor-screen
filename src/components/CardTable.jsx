@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Layers, MessageSquare, Monitor, Pin, PinOff, Plus, Settings2, Smartphone, Square, Star, Undo2, WifiOff, X } from 'lucide-react'
+import { Layers, MessageSquare, Monitor, PictureInPicture2, Pin, PinOff, Plus, Settings2, Smartphone, Square, Star, Undo2, WifiOff, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { Avatar } from './ui.jsx'
 import './table.css'
@@ -11,6 +11,7 @@ const FAIL_AFTER_MS = 15000 // sem video ate aqui, o verso avisa (o WebRTC segue
 const HOLD_MS = 260 // segurar uma transmissao por esse tempo a transforma em carta
 const GAP = 10
 const SLOT = '__slot'
+const EDGE = 14 // soltar uma transmissao a esta distancia da borda da janela (ou fora dela) abre o miniplayer
 
 // Grade que maximiza o maior video 16:9 contido; a ultima linha fica centralizada.
 function gridLayout(W, H, ids) {
@@ -61,7 +62,7 @@ const insert = (list, index, id) => [...list.slice(0, index), id, ...list.slice(
 // Mesa de cartas da sala de tela.
 // mao: quem transmite e nao esta na mesa (+ carta de transmitir) · mesa: transmissoes abertas em posicoes
 // calculadas · destaque: uma grande e as outras em faixa · segurar uma transmissao: vira carta de novo.
-export default function CardTable({ hand, tiles, audience = [], showAdd, toasts = [], onPlace, onReturn, onPeek, onAdd, onToast, renderStage,
+export default function CardTable({ hand, tiles, audience = [], showAdd, toasts = [], onPlace, onReturn, onPeek, onAdd, onToast, renderStage, onPip,
   visible = true, shareOpen = false, shareTitle = 'Transmitir', shareContent = null, onShareClose, onShareSettings, onStopShare }) {
   const felt = useRef(null)
   const handRef = useRef(null)
@@ -124,6 +125,8 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, toasts 
   // Alvo do arrasto: mao (so para transmissoes da mesa), chip de destaque, area principal do destaque ou uma posicao.
   function targetAt(x, y, kind, id) {
     const f = felt.current.getBoundingClientRect()
+    // Borda da janela (esquerda, direita, topo ou fora por baixo): a transmissao vira miniplayer.
+    if (kind === 'tile' && onPip && (x <= EDGE || y <= EDGE || x >= innerWidth - EDGE || y >= innerHeight)) return { type: 'pip' }
     const chip = spotChip.current?.getBoundingClientRect()
     if (chip && x >= chip.left - 8 && x <= chip.right + 8 && y >= chip.top - 8 && y <= chip.bottom + 8) return { type: 'spot' }
     if (kind === 'tile' && y > f.bottom - 4) return { type: 'hand' }
@@ -167,7 +170,8 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, toasts 
     const copy = g.copy
     const f = felt.current.getBoundingClientRect()
     let to
-    if (g.target?.type === 'hand') to = handRef.current?.getBoundingClientRect() ?? f
+    if (g.target?.type === 'pip') { const r = copy.getBoundingClientRect(); to = { left: r.left, top: r.top, width: r.width, height: r.height } }
+    else if (g.target?.type === 'hand') to = handRef.current?.getBoundingClientRect() ?? f
     else if (accept && rects[SLOT]) to = { left: f.left + rects[SLOT].x, top: f.top + rects[SLOT].y, width: rects[SLOT].w, height: rects[SLOT].h }
     else if (accept) to = f
     else to = g.home
@@ -196,11 +200,13 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, toasts 
     g.detach()
     gesture.current = null
     if (g.node) setTimeout(() => { g.node.style.opacity = '' }, reduced() ? 0 : 240)
-    play(t?.type === 'hand' || !t ? 'back' : 'place')
+    if (t?.type !== 'pip') play(t?.type === 'hand' || !t ? 'back' : 'place')
     if (g.kind === 'hand') {
       if (t?.type === 'slot') pending.current.set(g.id, { index: t.index })
       if (t?.type === 'spot') pending.current.set(g.id, { spot: true })
       if (t) onPlace(g.id)
+    } else if (t?.type === 'pip') {
+      onPip(g.id) // ainda dentro do pointerup: a janela do miniplayer precisa da ativacao do gesto
     } else if (t?.type === 'hand') {
       onReturn(g.id)
     } else if (t?.type === 'spot') {
@@ -299,6 +305,7 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, toasts 
 
   return (
     <div className={'card-table' + (cards.length ? '' : ' no-hand') + (drag ? ' is-dragging' : '')}>
+      {target?.type === 'pip' && createPortal(<div className="pip-hint" aria-hidden><span><PictureInPicture2 size={15} strokeWidth={1.9}/>Miniplayer</span></div>, document.body)}
       <div ref={felt} className={'table-felt' + (tiles.length ? '' : ' is-empty') + (target && target.type !== 'hand' ? ' is-near' : '') + (spotlight ? ' has-spot' : '')}>
         {tiles.map(tile => {
           const r = rects[tile.id] ?? lastRects.current[tile.id]
