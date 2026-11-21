@@ -283,6 +283,7 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, toasts 
   function tileDown(e, tile) {
     if (e.button !== 0 || !e.isPrimary || gesture.current) return
     if (e.target.closest('button, input, select, .stage-hud')) return
+    if (e.altKey) return // Alt+clique e ping na transmissao, nao levanta a carta
     const g = { kind: 'tile', id: tile.id, home: e.currentTarget.getBoundingClientRect(), pointer: e.pointerId, x: e.clientX, y: e.clientY }
     listen(g)
     g.hold = setTimeout(() => { if (gesture.current === g && !g.copy) lift(g) }, HOLD_MS)

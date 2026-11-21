@@ -112,6 +112,13 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
     return () => room.leave()
   }, [channel.id, profile.id, profile.username])
 
+  // Ping na propria transmissao com a previa fora da mesa: ao menos o som avisa quem transmite.
+  const ownShown = useRef(true)
+  ownShown.current = s.sharing && ownOnTable
+  useEffect(() => roomRef.current.onPing(p => {
+    if (p.stream === endpointId && !p.mine && !ownShown.current) play('drop', { gain: .6 })
+  }), [channel.id])
+
   useEffect(() => {
     const room = roomRef.current
     room.me.photo = photo
@@ -294,7 +301,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
             if (id === endpointId) setOwnOnTable(false)
             else roomRef.current.stopWatching(id)
           }}
-          renderStage={(tile, tools) => <Stage tools={tools} stream={tile.stream} local={tile.own} stats={tile.stats}
+          renderStage={(tile, tools) => <Stage tools={tools} stream={tile.stream} local={tile.own} stats={tile.stats} room={roomRef.current} streamId={tile.id}
             sendStats={s.sendStats} captureEngine={s.captureEngine} captureStats={s.captureStats}
             hasAudio={!tile.own && !!tile.stream?.getAudioTracks().length} watchingName={tile.name}/>}
         />
@@ -323,7 +330,14 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
   )
 }
 
-export function Stage({ tools, stream, local, stats, sendStats, captureEngine, captureStats, watchingName, hasAudio }) {
+// Ponto do video na tela (object-fit: contain): converte entre o clique e as coordenadas normalizadas do ping.
+function videoFrame(video) {
+  const box = video.getBoundingClientRect(), vw = video.videoWidth || 16, vh = video.videoHeight || 9
+  const scale = Math.min(box.width / vw, box.height / vh), w = vw * scale, h = vh * scale
+  return { left: box.left + (box.width - w) / 2, top: box.top + (box.height - h) / 2, w, h, box }
+}
+
+export function Stage({ tools, stream, local, stats, sendStats, captureEngine, captureStats, watchingName, hasAudio, room, streamId }) {
   const [diag, setDiag] = useState(() => pref.get('visor.diag', false))
   const video = useRef(null)
   const box = useRef(null)
@@ -333,6 +347,33 @@ export function Stage({ tools, stream, local, stats, sendStats, captureEngine, c
   const [volume, setVolume] = useState(() => pref.get('visor.volumeBoost', 1.5))
   const [muted, setMuted] = useState(false)
   const [blocked, setBlocked] = useState(false)
+  // Pings recebidos nesta transmissao: onda + nome por 1,6 s no ponto apontado.
+  const [pings, setPings] = useState([])
+  const lastPing = useRef(0)
+  useEffect(() => {
+    if (!room || !streamId) return
+    return room.onPing(p => {
+      if (p.stream !== streamId || !video.current || !box.current) return
+      const f = videoFrame(video.current)
+      const ping = { ...p, key: Math.random().toString(36).slice(2), left: f.left - f.box.left + p.x * f.w, top: f.top - f.box.top + p.y * f.h }
+      if (!p.mine) play('drop', { gain: .6 })
+      setPings(list => [...list.slice(-5), ping])
+      setTimeout(() => setPings(list => list.filter(x => x !== ping)), 1700)
+    })
+  }, [room, streamId])
+  const aim = e => box.current?.classList.toggle('is-aiming', e.altKey && !!stream && !!room)
+  const pingAt = e => {
+    if (!e.altKey || e.button !== 0 || !stream || !room || !streamId || e.target.closest('.stage-hud')) return
+    e.preventDefault()
+    e.stopPropagation()
+    const now = performance.now()
+    if (now - lastPing.current < 450) return
+    const f = videoFrame(video.current)
+    const x = (e.clientX - f.left) / f.w, y = (e.clientY - f.top) / f.h
+    if (x < 0 || x > 1 || y < 0 || y > 1) return
+    lastPing.current = now
+    room.ping(streamId, x, y)
+  }
 
   // Conecta amplificador Web Audio (GainNode + DynamicsCompressorNode) na track de audio recebida
   useEffect(() => {
@@ -416,8 +457,13 @@ export function Stage({ tools, stream, local, stats, sendStats, captureEngine, c
   const volPct = Math.round((muted ? 0 : volume) * 100)
 
   return (
-    <div ref={box} className={`stage ${stream ? 'has-stream' : ''}`} onDoubleClick={() => stream && toggleFull()}>
+    <div ref={box} className={`stage ${stream ? 'has-stream' : ''}`} onDoubleClick={e => stream && !e.altKey && toggleFull()}
+      onPointerDown={pingAt} onPointerMove={aim} onPointerLeave={() => box.current?.classList.remove('is-aiming')}>
       <video ref={video} autoPlay={!local} playsInline muted />
+      {!!pings.length && <div className="stage-pings" aria-hidden>
+        {pings.map(p => <span key={p.key} className={'stage-ping' + (p.mine ? ' is-mine' : '')} style={{ left: p.left, top: p.top }}>
+          <i/><i/><b>{p.mine ? 'você' : p.name}</b></span>)}
+      </div>}
       {!stream && (
         <div className="stage-idle" aria-hidden>
           <span className="pulse-ring" />

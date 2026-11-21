@@ -75,6 +75,8 @@ function createWindow() {
     wc.setZoomLevel(step === 0 ? 0 : Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, wc.getZoomLevel() + step)))
   }
   win.webContents.on('before-input-event', (event, input) => {
+    // Alt sozinho nao abre o menu escondido (Alt+clique e o ping na transmissao).
+    if (input.key === 'Alt' && !input.control && !input.shift && !input.meta) return event.preventDefault()
     if (input.type !== 'keyDown' || !(input.control || input.meta) || input.alt) return
     const k = input.key, c = input.code
     if (k === '=' || k === '+' || c === 'NumpadAdd' || c === 'Equal') zoomBy(0.5)

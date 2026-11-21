@@ -2325,3 +2325,20 @@ button:disabled {
 /* Fotos nunca sao arrastadas sozinhas: o gesto sempre pega a carta inteira */
 img { -webkit-user-drag:none; user-select:none }
 .deck-card img,.hand-card img,.seat-card img,.table-card img { pointer-events:none }
+
+/* Ping: Alt+clique num ponto da transmissao (onda de choque + nome de quem apontou) */
+.stage.is-aiming.has-stream { cursor: crosshair }
+.stage-pings { position: absolute; inset: 0; pointer-events: none; z-index: 2; overflow: hidden }
+.stage-ping { position: absolute; width: 0; height: 0 }
+.stage-ping::before { content: ""; position: absolute; left: -4px; top: -4px; width: 8px; height: 8px; border-radius: 50%;
+  background: #fff; box-shadow: 0 0 0 3px #0007, 0 0 18px #fff8; animation: ping-dot 1.6s var(--out) both }
+.stage-ping i { position: absolute; left: -64px; top: -64px; width: 128px; height: 128px; border-radius: 50%;
+  border: 1.5px solid #fff; box-shadow: 0 0 0 1px #0005, inset 0 0 0 1px #0004; animation: ping-ring 1.1s cubic-bezier(.16,1,.3,1) both }
+.stage-ping i + i { animation-delay: .16s; border-color: #fff9 }
+.stage-ping b { position: absolute; left: 12px; top: 10px; padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+  font-size: 11px; font-weight: 600; color: var(--text); background: #000b; border: 1px solid #ffffff2e; animation: ping-label 1.6s var(--out) both }
+.stage-ping.is-mine b { color: var(--muted) }
+@keyframes ping-ring { from { transform: scale(.08); opacity: 1 } to { transform: scale(1); opacity: 0 } }
+@keyframes ping-dot { 0% { transform: scale(0) } 12% { transform: scale(1.4) } 24%, 80% { transform: scale(1); opacity: 1 } 100% { opacity: 0 } }
+@keyframes ping-label { 0% { opacity: 0; transform: translateY(3px) } 12%, 80% { opacity: 1; transform: none } 100% { opacity: 0 } }
+@media (prefers-reduced-motion: reduce) { .stage-ping i { display: none } .stage-ping::before, .stage-ping b { animation-duration: 1.6s; animation-name: ping-label } }

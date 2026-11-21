@@ -99,6 +99,7 @@ export class ScreenRoom {
       .on('broadcast', { event: 'signal' }, ({ payload }) => {
         if (this.channel === channel && payload?.to === this.me.id) this.onSignal(payload)
       })
+      .on('broadcast', { event: 'ping' }, ({ payload }) => { if (this.channel === channel) this.firePing(payload) })
       .subscribe((status) => {
         if (this.channel !== channel || this.closed) return
         if (status === 'SUBSCRIBED') { this.retryDelay = 0; this.publisher.reset() }
@@ -140,6 +141,25 @@ export class ScreenRoom {
 
   publishPresence() {
     return this.channel?.track(this.presencePayload())
+  }
+
+  // Ping: Alt+clique num ponto de uma transmissao. Vai para a sala inteira; cada tela que mostra aquela
+  // transmissao (inclusive a de quem transmite) desenha a onda no ponto. x/y normalizados (0..1) no video.
+  ping(stream, x, y) {
+    const payload = { from: this.me.id, profileId: this.me.profileId, name: this.me.name, stream, x, y }
+    this.channel?.send({ type: 'broadcast', event: 'ping', payload })
+    this.firePing(payload)
+  }
+
+  onPing(fn) {
+    (this.pingListeners ??= new Set()).add(fn)
+    return () => this.pingListeners.delete(fn)
+  }
+
+  firePing(p) {
+    if (!p || typeof p.stream !== 'string' || !(p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1)) return
+    const ping = { from: String(p.from ?? ''), name: String(p.name ?? '').slice(0, 24), stream: p.stream, x: p.x, y: p.y, mine: p.from === this.me.id }
+    for (const fn of this.pingListeners ?? []) fn(ping)
   }
 
   send(to, type, data = {}) {
