@@ -3,14 +3,13 @@
 .deck-card,.deck-center { width:var(--cw); height:var(--ch); border:1px solid #ffffff38; border-radius:var(--r-lg);
   color:var(--text); background:linear-gradient(150deg,#303030,#131313 78%); padding:9px;
   display:flex; flex-direction:column; gap:8px; box-shadow:0 8px 24px #0006 }
-.deck-card { position:absolute; top:0; left:calc(var(--cw)*-.5); user-select:none; touch-action:none; cursor:grab;
+.deck-card { position:absolute; top:0; left:calc(var(--cw)*-.5 + var(--part,0px)); user-select:none; touch-action:none; cursor:grab;
   z-index:var(--z); transform-origin:center bottom; translate:calc(var(--d)*min(29px,var(--spread))) 0;
-  rotate:calc(var(--d)*3deg); transform:translateX(var(--nudge,0px)) rotate(var(--nudge-r,0deg));
-  transition:translate 1s var(--fan),rotate 1s var(--fan),scale 1s var(--scale),transform 1s var(--lift) }
+  rotate:calc(var(--d)*3deg); transform:none;
+  /* --part: espaco aberto em volta da carta em foco (fanPhysics.js), rapido e sem mola */
+  transition:translate 1s var(--fan),rotate 1s var(--fan),scale 1s var(--scale),transform 1s var(--lift),left .2s cubic-bezier(.2,.8,.25,1) }
 .deck-hand:hover .deck-card,.deck-hand:focus-within .deck-card,.deck-hand.is-settling .deck-card { translate:calc(var(--d)*var(--spread)) calc(var(--abs)*12px); rotate:calc(var(--d)*12deg) }
-.deck-card:hover,.deck-card:focus-visible { transform:translateX(var(--nudge,0px)) translateY(-22px); scale:1.06 }
-/* desvio lateral rapido (fanPhysics.js); a volta usa a mola de elevacao */
-.deck-card.is-nudged { transition:translate 1s var(--fan),rotate 1s var(--fan),scale 1s var(--scale),transform .19s cubic-bezier(.3,.7,.4,1) }
+.deck-card:hover,.deck-card:focus-visible { transform:translateY(-22px); scale:1.06 }
 .deck-card:active { cursor:grabbing }
 .deck-art { flex:1; min-height:0; width:100%; display:grid; place-items:center; overflow:hidden; border-radius:var(--r-md);
   font-weight:650; font-size:clamp(24px,4vh,38px); letter-spacing:-.055em; text-transform:uppercase;
@@ -110,3 +109,27 @@
 
 /* lixeira: apagar (servidor proprio) ou sair (servidor de outra pessoa) */
 .deck-trash[data-mode=delete] .bin-leave,.deck-trash[data-mode=leave] .bin-delete { display:none }
+
+/* call em andamento: a carta fica no centro do deck ate voltar para a sala ou ser arrastada ao deck */
+.deck-callcard { position:absolute; left:50%; top:50%; translate:-50% -50%; z-index:3; width:var(--cw); height:var(--ch);
+  border:1px solid #ffffff52; border-radius:var(--r-lg); color:var(--text); background:linear-gradient(150deg,#323232,#131313 78%);
+  padding:9px; display:flex; flex-direction:column; gap:8px; text-align:left; cursor:grab; user-select:none; touch-action:none;
+  box-shadow:0 0 0 1px #ffffff1c,0 18px 60px #ffffff12,0 8px 24px #0006;
+  transition:opacity .3s,translate .45s var(--settle),scale .45s var(--settle),box-shadow .3s; animation:call-in .55s var(--settle) both }
+/* so opacidade: o voo de volta da sala mede esta carta durante a entrada */
+@keyframes call-in { from { opacity:0 } }
+.deck-callcard:hover { box-shadow:0 0 0 1px #ffffff40,0 20px 70px #ffffff1a,0 8px 24px #0006 }
+.deck-callcard.is-dragging { cursor:grabbing; z-index:6; transition:none }
+.deck-callcard.is-away { opacity:0; translate:-50% -30%; scale:.86; pointer-events:none }
+.deck-callcard.is-connecting .deck-art { opacity:.6 }
+.deck-callcard.is-live { border-color:#ffffff80 }
+.deck-callroom { display:flex; align-items:center; gap:5px; min-width:0; margin-top:-7px; padding:0 3px 2px; font-size:11px; font-weight:550; color:var(--muted) }
+.deck-callroom span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.deck-callroom .live-dot { margin-left:auto; flex:none }
+.deck-callcard.is-live .deck-callroom { color:var(--text) }
+.deck-ghost { position:fixed!important; translate:none!important; scale:1!important; margin:0; z-index:999; pointer-events:none; animation:none!important; transition:none!important }
+/* alvo ao arrastar a carta da call de volta: a faixa do deck */
+.deck-hand::before { content:""; position:absolute; left:calc(-50vw + 20px); right:calc(-50vw + 20px); top:-20px; bottom:-16px; border-radius:28px;
+  border:1px dashed transparent; pointer-events:none; transition:border-color .2s,background .2s }
+.deck-hand.is-target::before { border-color:#ffffff90; background:#ffffff07 }
+@media(prefers-reduced-motion:reduce){ .deck-callcard{animation:none;transition:none} }

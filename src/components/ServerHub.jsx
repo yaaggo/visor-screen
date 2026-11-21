@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, DoorOpen, Layers, LogIn, LogOut, Plus, Trash2, UserRound, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Cast, ChevronLeft, ChevronRight, DoorOpen, Layers, LogIn, LogOut, Plus, Radio, Trash2, UserRound, X } from 'lucide-react'
 import { ServerFace, usePopover } from './ui.jsx'
 import './deck.css'
 import { play } from '../lib/sound.js'
@@ -31,9 +31,11 @@ function Face({server}) {
   </>
 }
 
-export default function ServerHub({ servers, ownerId, onDelete, onLeave, returningId, onOpen, onSubmit, editProfile, logout }) {
+export default function ServerHub({ servers, ownerId, onDelete, onLeave, returningId, onOpen, onSubmit, editProfile, logout, call, onResume, onHangup }) {
   const account = usePopover()
-  const [page, setPage] = useState(() => Math.max(0, Math.floor(servers.findIndex(s => s.id === returningId)/serversPerPage)))
+  // A call em andamento fica no centro do deck, fora da mao.
+  const inHand = list => list.filter(s => s.id !== call?.server?.id)
+  const [page, setPage] = useState(() => Math.max(0, Math.floor(inHand(servers).findIndex(s => s.id === returningId)/serversPerPage)))
   const [step,setStep] = useState('idle')
   const [draw,setDraw] = useState(null)
   const [selected,setSelected] = useState(null)
@@ -48,14 +50,15 @@ export default function ServerHub({ servers, ownerId, onDelete, onLeave, returni
   const skipClick = useRef(false)
   const form = useRef(null)
   const hand = useRef(null)
-  // Sobreposicao no leque aberto: mesmo --spread de deck.css, min(78px, (100vw - cw - 40px) / gaps).
+  const callRef = useRef(null)
+  // Posicao no leque aberto: mesmo --spread de deck.css, min(78px, (100vw - cw - 40px) / gaps).
   useLayoutEffect(() => attachFanPhysics(hand.current, '.deck-card', {
-    overlapAt: (a, b) => {
-      const spread = Math.min(78, (innerWidth - a.offsetWidth - 40) / (Number(hand.current.style.getPropertyValue('--gaps')) || 1))
-      return a.offsetWidth - Math.abs(a.style.getPropertyValue('--d') - b.style.getPropertyValue('--d')) * spread
+    positionAt: card => {
+      const spread = Math.min(78, (innerWidth - card.offsetWidth - 40) / (Number(hand.current.style.getPropertyValue('--gaps')) || 1))
+      return Number(card.style.getPropertyValue('--d')) * spread
     },
   }), [])
-  const deck = draw?.servers ?? servers
+  const deck = inHand(draw?.servers ?? servers)
   const lastPage = Math.max(0, Math.ceil(deck.length / serversPerPage) - 1)
   const activePage = Math.min(page,lastPage)
   const cards = [...deck.slice(activePage * serversPerPage, (activePage + 1) * serversPerPage), null]
@@ -266,6 +269,64 @@ export default function ServerHub({ servers, ownerId, onDelete, onLeave, returni
       setError(err.code==='P0003' ? 'Nome repetido. Use o código de convite.' : err.code==='P0002' ? 'Servidor não encontrado.' : 'Não foi possível concluir. Tente novamente.')
     } finally { setBusy(false) }
   }
+  // Carta da call no centro: clicar volta para a sala; arrastar ate o deck desliga a call.
+  function callDown(e) {
+    if (held.current || !e.isPrimary || e.button !== 0) return
+    const node = e.currentTarget
+    const g = { x:e.clientX, y:e.clientY, moved:false }
+    node.setPointerCapture(e.pointerId)
+    const overHand = ev => {
+      const r = hand.current.getBoundingClientRect()
+      return ev.clientY > r.top - node.offsetHeight * .35
+    }
+    const moveCall = ev => {
+      const dx = ev.clientX - g.x, dy = ev.clientY - g.y
+      if (!g.moved && Math.hypot(dx, dy) < 5) return
+      if (!g.moved) play('lift')
+      g.moved = true
+      node.classList.add('is-dragging')
+      node.style.transform = `translate(${dx}px,${dy}px) rotate(${Math.max(-8, Math.min(8, dx * .04))}deg)`
+      hand.current.classList.toggle('is-target', overHand(ev))
+    }
+    const end = ev => {
+      node.removeEventListener('pointermove', moveCall)
+      node.removeEventListener('pointerup', end)
+      node.removeEventListener('pointercancel', end)
+      hand.current.classList.remove('is-target')
+      node.classList.remove('is-dragging')
+      if (!g.moved) { node.style.transform = ''; return }
+      skipClick.current = true
+      if (ev.type === 'pointerup' && overHand(ev)) return hangup(node)
+      const from = node.style.transform
+      node.style.transform = ''
+      play('back')
+      node.animate([{ transform:from }, { transform:'none' }], { duration:reduced() ? 1 : 320, easing:'cubic-bezier(.2,.8,.2,1)' })
+    }
+    node.addEventListener('pointermove', moveCall)
+    node.addEventListener('pointerup', end)
+    node.addEventListener('pointercancel', end)
+  }
+  function hangup(node) {
+    const id = call.server.id
+    const from = node.getBoundingClientRect()
+    const ghost = node.cloneNode(true)
+    ghost.className = 'deck-callcard deck-ghost'
+    ghost.inert = true
+    Object.assign(ghost.style, { left:from.left+'px', top:from.top+'px', width:from.width+'px', height:from.height+'px', transform:'none' })
+    document.body.append(ghost)
+    const index = servers.findIndex(s => s.id === id)
+    flushSync(() => { onHangup(); if (index >= 0) setPage(Math.floor(index / serversPerPage)) })
+    const slot = hand.current.querySelector(`[data-server="${CSS.escape(id)}"]`)
+    if (!slot) { ghost.remove(); return }
+    slot.style.opacity = '0'
+    const to = slot.getBoundingClientRect()
+    const dx = to.left + to.width/2 - from.left - from.width/2
+    const dy = to.top + to.height/2 - from.top - from.height/2
+    const flight = ghost.animate([{ transform:'none' }, { transform:`translate(${dx}px,${dy}px) rotate(${getComputedStyle(slot).rotate}) scale(${to.width/from.width})` }],
+      { duration:reduced() ? 1 : 380, easing:'cubic-bezier(.22,.8,.18,1)', fill:'forwards' })
+    flight.onfinish = () => { ghost.remove(); slot.style.opacity = '' }
+  }
+  const callTip = call ? (call.live ? 'Transmitindo em ' : 'Na sala ') + call.name : ''
   return <section className="server-hub deck-hub" aria-label="Deck de servidores" style={springs}
     onKeyDown={e=>{if(e.key==='Escape' && !busy && ['choose','create','join'].includes(step))reset()}}>
     <header className="hub-titlebar"><div ref={account.ref} className="hub-account">
@@ -285,9 +346,17 @@ export default function ServerHub({ servers, ownerId, onDelete, onLeave, returni
           {error && <small role="alert">{error}</small>}
         </div>}
     </div>
+    {call?.server && <button ref={callRef} className={'deck-callcard' + (step !== 'idle' ? ' is-away' : '') + (call.live ? ' is-live' : '') + (call.connected ? '' : ' is-connecting')}
+      data-server={call.server.id} aria-label={callTip + '. Arraste para o deck para desconectar'} data-tip={callTip}
+      onPointerDown={callDown}
+      onKeyDown={e => { if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); hangup(e.currentTarget) } }}
+      onClick={e => { if (skipClick.current && e.detail !== 0) { skipClick.current = false; return } if (!held.current) onResume(e.currentTarget) }}>
+      <Face server={call.server}/>
+      <span className="deck-callroom">{call.live ? <Radio size={11} aria-hidden/> : <Cast size={11} aria-hidden/>}<span>{call.name}</span>{call.live && <i className="live-dot" aria-hidden/>}</span>
+    </button>}
     <div ref={hand} className="deck-hand" inert={step!=='idle'} style={{'--gaps':Math.max(1,cards.length-1)}}>
       {cards.map((server,i)=><button key={server?.id ?? 'add'} data-server={server?.id} aria-label={server?.name ?? 'Adicionar servidor'}
-        className={'deck-card'+(server?'':' deck-add')} data-drawn={draw && draw.id===(server?.id ?? null) ? true : undefined} data-z={i+1} style={{'--d':i-(cards.length-1)/2,'--abs':Math.abs(i-(cards.length-1)/2),'--z':i+1}}
+        className={'deck-card'+(server?'':' deck-add')} data-drawn={draw && draw.id===(server?.id ?? null) ? true : undefined} data-z={cards.length-i} style={{'--d':i-(cards.length-1)/2,'--abs':Math.abs(i-(cards.length-1)/2),'--z':cards.length-i}}
         onPointerDown={e=>begin(e,server)}
         onLostPointerCapture={e=>release(e,server,true)} onClick={e=>{
           if(skipClick.current && e.detail!==0){skipClick.current=false;return}

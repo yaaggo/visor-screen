@@ -324,12 +324,13 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, toasts 
       {(!!cards.length || drag?.kind === 'tile') && <div ref={setHand} className={'hand' + (target?.type === 'hand' ? ' is-target' : '')} style={{ '--n': Math.max(1, cards.length) }}>
         {cards.map((card, i) => {
           const d = i - mid
-          const style = { '--d': d, '--abs': Math.abs(d), '--z': i + 1 } // da esquerda para a direita, a + por cima
-          if (card.add) return <button key={card.id} ref={addRef} className={'hand-card hand-add' + (shareOpen ? ' is-open' : '')} data-z={i + 1} style={style} aria-label="Transmitir" aria-expanded={shareOpen} onClick={onAdd}>
+          const z = cards.length - i
+          const style = { '--d': d, '--abs': Math.abs(d), '--z': z } // a mais a esquerda por cima, a + por baixo
+          if (card.add) return <button key={card.id} ref={addRef} className={'hand-card hand-add' + (shareOpen ? ' is-open' : '')} data-z={z} style={style} aria-label="Transmitir" aria-expanded={shareOpen} onClick={onAdd}>
             <span className="hand-art"><Plus size={22} strokeWidth={1.5}/></span>
             <span className="hand-caption">Transmitir</span>
           </button>
-          return <button key={card.id} className={'hand-card' + (card.own ? ' is-own' : '')} data-z={i + 1} style={style}
+          return <button key={card.id} className={'hand-card' + (card.own ? ' is-own' : '')} data-z={z} style={style}
             aria-label={(card.own ? 'Sua transmissão' : card.name) + ' · colocar na mesa'}
             onPointerDown={e => handDown(e, card)}
             onClick={e => { if (e.detail === 0) onPlace(card.id) }}

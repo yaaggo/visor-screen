@@ -10,7 +10,7 @@ const TableLab = import.meta.env.DEV ? lazy(() => import('./components/TableLab.
 const DeckLab = import.meta.env.DEV ? lazy(() => import('./components/DeckLab.jsx')) : null
 // Pagina dos sons: #/sons (sem login, tambem na versao publicada)
 const SoundLab = lazy(() => import('./components/SoundLab.jsx'))
-const page = () => location.hash === '#/sons' ? 'sons' : TableLab && location.hash === '#/mesa-teste' ? 'mesa' : DeckLab && location.hash === '#/deck-teste' ? 'deck' : null
+const page = () => location.hash === '#/sons' ? 'sons' : TableLab && location.hash === '#/mesa-teste' ? 'mesa' : DeckLab && location.hash.startsWith('#/deck-teste') ? 'deck' : null
 
 export default function App() {
   const [lab, setLab] = useState(page)

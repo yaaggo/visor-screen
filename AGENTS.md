@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-21, versao 1.11.0 (lixeira apaga ou sai do servidor; fisica de prioridade das cartas; foto na carta).
+Ultima atualizacao: 2026-11-21, versao 1.12.0 (cartas sem atravessar, call no centro do deck, entrada na call sem tabuleiro vazio).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -242,6 +242,29 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.12.0 — leque sem atravessar, call no centro do deck (2026-11-21):
+- `src/lib/fanPhysics.js` reescrito. Ordem base: a carta mais a esquerda por cima, a + por baixo (pedido do usuario,
+  inverte a 1.11.0). So a carta em foco muda de z. As cartas que ficam por cima dela na ordem base abrem espaco
+  (`--part` somado ao `left`, transicao de .2s); o espaco e dividido: elas vao metade para um lado e a carta em foco
+  (com as que estao abaixo dela) a outra metade. Um z-index so muda quando nenhuma carta sobreposta troca de lado
+  (geometria real: translate/rotate/scale/transform/left atuais + SAT, a cada quadro); fallback de 420 ms.
+  A carta que perde o foco desce primeiro (enquanto ainda esta livre) e so depois o leque se reorganiza.
+- QA objetivo (CDP, Chrome headless 9336): a cada quadro mede a sobreposicao (SAT) e a ordem de cada par de cartas;
+  troca de ordem com sobreposicao > 3 px = atravessou. Deck (1400x880 e 900x620) e mao de 12 cartas com varreduras
+  nos dois sentidos, saltos e saida rapida: 0 trocas. Com reduced motion (troca instantanea) o detector acusa 48.
+- Deck com call em andamento: a carta do servidor da call fica no centro (`.deck-callcard`), fora da mao, com o nome
+  da sala e, transmitindo, icone de radio + ponto pulsando. Clicar volta para a sala; arrastar ate a faixa do deck
+  (ou Delete) desliga e a carta volta voando para o seu lugar na mao. Colocar outra carta no centro abre aquele servidor e a
+  call continua (como antes). DeckLab: `#/deck-teste?call` e `#/deck-teste?live`.
+- Voo carta -> capa: a arte da carta cresce ate ocupar a moldura (sem margem e legenda) antes da troca; com foto
+  nao aparecem mais duas imagens.
+- Entrar na call vindo do deck mostrava o tabuleiro vazio e depois saltava para a sala (a lista de canais ainda
+  carregava). O Shell usa o proprio canal da call e guarda os canais por servidor; no deck pre-carrega os canais
+  de todos os servidores, entao o tabuleiro abre ja com as mesas.
+- QA no app real (dev) com conta temporaria, apagada no fim: entrar com foto, sala, voltar (carta no centro),
+  retomar, outro servidor durante a call, desligar arrastando. Nao verificado: o indicador "transmitindo" com uma
+  transmissao real (so no DeckLab) e o Electron instalado com duas contas.
 
 1.11.0 — lixeira dupla, fisica das cartas e foto na carta (2026-11-21):
 - Lixeira do deck: servidor proprio = apagar (icone lixeira); servidor de outra pessoa = sair (icone porta).

@@ -76,10 +76,20 @@ function coverFlight(move, item) {
   item.style.visibility = 'hidden'
   const box = (r, radius) => ({ left:r.left+'px', top:r.top+'px', width:r.width+'px', height:r.height+'px', borderRadius:radius })
   const ease = 'cubic-bezier(.32,.72,0,1)'
-  const shape = flight.animate([box(from, move.radius), box(to, getComputedStyle(item).borderRadius)],
+  const radius = getComputedStyle(item).borderRadius
+  const shape = flight.animate([box(from, move.radius), box(to, radius)],
     { duration:620, easing:ease, fill:'forwards' })
-  card.animate([{ opacity:1, filter:'blur(0)' }, { opacity:0, filter:'blur(2px)' }], { duration:330, easing:'cubic-bezier(.4,0,.6,1)', fill:'forwards' })
-  face.animate([{ opacity:0, scale:1.08 }, { opacity:1, scale:1 }], { duration:420, delay:140, easing:'cubic-bezier(.22,1,.36,1)', fill:'forwards' })
+  // A arte da carta cresce ate ocupar a moldura inteira (sem margem nem legenda): com foto, a imagem da carta
+  // e a da capa ficam no mesmo lugar e a troca entre elas nao mostra duas fotos.
+  const morph = { duration:300, easing:ease, fill:'forwards' }
+  const cs = getComputedStyle(card)
+  card.animate([{ padding:cs.padding, gap:cs.gap }, { padding:'0px', gap:'0px' }], morph)
+  for (const el of card.querySelectorAll('.deck-caption,.deck-callroom'))
+    el.animate([{ opacity:1, height:el.offsetHeight + 'px', margin:getComputedStyle(el).margin }, { opacity:0, height:'0px', paddingTop:'0px', paddingBottom:'0px', margin:'0px' }], { ...morph, duration:220 })
+  const art = card.querySelector('.deck-art')
+  if (art) art.animate([{ borderRadius:getComputedStyle(art).borderRadius, borderWidth:'1px' }, { borderRadius:radius, borderWidth:'0px' }], morph)
+  card.animate([{ opacity:1 }, { opacity:0 }], { duration:260, delay:260, easing:'cubic-bezier(.4,0,.6,1)', fill:'forwards' })
+  face.animate([{ opacity:0 }, { opacity:1 }], { duration:300, delay:200, easing:'cubic-bezier(.22,1,.36,1)', fill:'forwards' })
   const restore = () => { flight.remove(); item.style.visibility = '' }
   shape.onfinish = restore
   return () => { shape.cancel(); restore() }
@@ -191,7 +201,29 @@ export default function Shell({ profile }) {
   const listedVisitors = [...roster.values()]
 
   const server = servers?.find((s) => s.id === serverId) ?? null
-  const channel = channels?.find((c) => c.kind === 'screen' && c.server_id === serverId && c.id === channelId) ?? null
+  // Canais ja vistos por servidor: voltar a um servidor mostra as mesas na hora, sem o tabuleiro vazio
+  // enquanto a lista recarrega. Agrupa pelo server_id de cada linha (no primeiro render apos trocar de
+  // servidor, `channels` ainda guarda as linhas do servidor anterior).
+  const channelCache = useRef(new Map())
+  if (channels?.length) {
+    const groups = Map.groupBy(channels, c => c.server_id)
+    for (const [id, rows] of groups) channelCache.current.set(id, rows)
+  }
+  // No deck, carrega os canais de todos os servidores: a carta pousa e o tabuleiro ja tem as mesas.
+  useEffect(() => {
+    if (serverId || !servers?.length) return
+    let alive = true
+    supabase.from('channels').select('*').eq('kind', 'screen').order('created_at', { ascending: true }).then(({ data }) => {
+      if (!alive || !data) return
+      for (const s of servers) channelCache.current.set(s.id, data.filter(c => c.server_id === s.id))
+    })
+    return () => { alive = false }
+  }, [serverId, servers])
+  const cachedChannels = serverId ? channelCache.current.get(serverId) : null
+  const knownChannels = channels?.some(c => c.server_id === serverId) || (channels && !channels.length && !cachedChannels) ? channels : cachedChannels ?? channels
+  // A call em andamento ja traz o proprio canal: entrar nela nao espera a lista (antes aparecia o tabuleiro vazio).
+  const channel = knownChannels?.find((c) => c.kind === 'screen' && c.server_id === serverId && c.id === channelId)
+    ?? (call && call.id === channelId && call.server_id === serverId ? call : null)
   const isOwner = server?.owner_id === profile.id
 
   useEffect(() => {
@@ -249,7 +281,7 @@ export default function Shell({ profile }) {
   }, [serverId])
   function openServer(row, node) {
     const previous = document.querySelector('.rail-item.is-active')
-    const card = !previous && node?.classList.contains('deck-center') ? node.cloneNode(true) : null
+    const card = !previous && node?.matches('.deck-center,.deck-callcard') ? node.cloneNode(true) : null
     origin.current = { id:row.id, rect:(previous ?? node).getBoundingClientRect(), card,
       radius:card ? getComputedStyle(node).borderRadius : null }
     const next = row.id === serverId ? null : row.id
@@ -296,6 +328,8 @@ export default function Shell({ profile }) {
   const deleteChannel = async (id) => {
     await supabase.from('channels').delete().eq('id', id)
     setChannels((prev) => prev.filter((c) => c.id !== id))
+    const cached = channelCache.current.get(serverId)
+    if (cached) channelCache.current.set(serverId, cached.filter(c => c.id !== id))
     if (id === channelId) go(serverId)
   }
 
@@ -352,7 +386,7 @@ export default function Shell({ profile }) {
               editPhoto={()=>setServerPhoto(server)} rename={renameServer} createChannel={createChannel}/>
             <PillList
               className="channel-list"
-              items={channels?.filter(c => c.server_id === serverId && c.kind === 'screen') ?? []}
+              items={knownChannels?.filter(c => c.server_id === serverId && c.kind === 'screen') ?? []}
               activeId={channelId}
               render={(c) => (
                 <div key={c.id}><div data-id={c.id} className="channel-row">
@@ -393,9 +427,12 @@ export default function Shell({ profile }) {
           <div id="call-head-slot" className="head-slot"/>
         </header>}
         <div className="main-body">
-          {!serverId && servers && <ServerHub ownerId={profile.id} onDelete={deleteServer} onLeave={leaveServer} returningId={origin.current?.id} servers={servers} onSubmit={submitServer} onOpen={openServer} editProfile={() => setEditing(true)} logout={logout}/>}
+          {!serverId && servers && <ServerHub call={call ? { server:servers.find(s => s.id === call.server_id), name:call.name, connected,
+              live:visitors.some(v => (v.endpointId ?? v.id) === endpointId && v.channel === call.id && v.sharing) } : null}
+            onResume={node => { const row = servers.find(s => s.id === call?.server_id); if (row) openServer(row, node) }} onHangup={disconnect}
+            ownerId={profile.id} onDelete={deleteServer} onLeave={leaveServer} returningId={origin.current?.id} servers={servers} onSubmit={submitServer} onOpen={openServer} editProfile={() => setEditing(true)} logout={logout}/>}
           {server && !channel && <ServerBoard key={server.id} server={server} owner={isOwner} returning={returning}
-            channels={channels?.filter(c => c.kind === 'screen' && c.server_id === serverId) ?? []}
+            channels={knownChannels?.filter(c => c.kind === 'screen' && c.server_id === serverId) ?? []}
             people={listedVisitors} me={{ id: endpointId, profileId: profile.id, name: profile.username, photo }}
             header={<ServerHeader server={server} owner={isOwner} back={e => openServer(server, e.currentTarget)}
               editPhoto={() => setServerPhoto(server)} rename={renameServer} createChannel={createChannel}/>}
