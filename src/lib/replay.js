@@ -28,6 +28,16 @@ export class ReplayBuffer {
     return this
   }
 
+  // Uma track nova (o audio do sistema chega depois do video) so entra em gravadores novos: recomeca os dois.
+  addTrack(track) {
+    if (this.closed) return
+    this.stream = new MediaStream([...this.stream.getTracks(), track])
+    clearTimeout(this.offset)
+    clearInterval(this.cycle)
+    for (const r of this.recorders) if (r) this.drop(r)
+    this.start()
+  }
+
   spawn() {
     const tracks = [...this.stream.getVideoTracks(), ...this.stream.getAudioTracks()].filter(t => t.readyState === 'live')
     const media = new MediaRecorder(new MediaStream(tracks), { mimeType: this.type, videoBitsPerSecond: this.bitrate, audioBitsPerSecond: 192_000 })

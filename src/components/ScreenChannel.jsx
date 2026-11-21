@@ -12,6 +12,7 @@ import SharePanel, { exeKey, pref, useShareConfig } from './SharePanel.jsx'
 import CardTable from './CardTable.jsx'
 import MiniPlayer, { openMiniWindow } from './MiniPlayer.jsx'
 import { ReplayBuffer, replaySupported } from '../lib/replay.js'
+import { AppAudioMixer } from '../lib/appAudio.js'
 import { play } from '../lib/sound.js'
 import TextChannel from './TextChannel.jsx'
 
@@ -119,9 +120,19 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
   // em Videos\Visor Clips com miniatura. Desliga junto com a transmissao.
   const [clipSaved, setClipSaved] = useState(null)
   const replayOn = desktop && !!window.visor?.clips && !!cfg.replay && s.sharing && !!s.local && replaySupported()
+  // O clipe sempre tem som: transmitindo no Mudo (ou sem audio), o replay grava o som do sistema (menos o
+  // proprio Visor) num mixer so dele; os espectadores continuam sem audio.
+  const replayOwnAudio = replayOn && (cfg.kind === 'device' ? !s.local?.getAudioTracks().length : cfg.audioMode === 'off')
   useEffect(() => {
     if (!replayOn) return
-    const buffer = new ReplayBuffer(s.local, { seconds: cfg.replay }).start()
+    let mixer = null, closed = false
+    const source = replayOwnAudio ? new MediaStream(s.local.getVideoTracks()) : s.local
+    const buffer = new ReplayBuffer(source, { seconds: cfg.replay }).start()
+    if (replayOwnAudio) window.visor.audioSupported().then(ok => {
+      if (!ok || closed) return
+      mixer = new AppAudioMixer(1)
+      return mixer.set([{ pid: selfPid, exclude: true }]).then(() => { if (closed) mixer.close(); else buffer.addTrack(mixer.track) })
+    }).catch(() => {})
     let saving = false, hide
     window.visor.replayArm(true)
     const off = window.visor.onReplaySave(async () => {
@@ -139,8 +150,8 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
         hide = setTimeout(() => setClipSaved(null), 2600)
       } finally { saving = false }
     })
-    return () => { off(); clearTimeout(hide); window.visor.replayArm(false); buffer.stop() }
-  }, [replayOn, s.local, cfg.replay, channel.id])
+    return () => { closed = true; off(); clearTimeout(hide); window.visor.replayArm(false); buffer.stop(); mixer?.close() }
+  }, [replayOn, replayOwnAudio, s.local, cfg.replay, channel.id])
 
   // Ping na propria transmissao com a previa fora da mesa: ao menos o som avisa quem transmite.
   const ownShown = useRef(true)
