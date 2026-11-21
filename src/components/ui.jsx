@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { Check, Copy } from 'lucide-react'
+import { celestialFor } from '../lib/celestial.js'
 
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches
 
@@ -171,8 +172,9 @@ export function usePopover() {
 }
 
 // URL da foto do servidor (photo_url so existe nos labs, com imagem gerada localmente).
+// Foto do servidor; sem foto, o corpo celeste do servidor (src/lib/celestial.js).
 export const serverPhotoUrl = server => server.photo_url ?? (server.photo_revision ? supabase.storage.from('avatars')
-  .getPublicUrl('servers/' + server.id + '.webp').data.publicUrl + '?v=' + server.photo_revision : null)
+  .getPublicUrl('servers/' + server.id + '.webp').data.publicUrl + '?v=' + server.photo_revision : celestialFor(server.id))
 
 // Duas primeiras letras do nome sem espacos, por caractere completo (nao corta emoji ao meio).
 export const serverInitials = name => Array.from(name.replace(/\s+/g, '')).slice(0, 2).join('') || '?'

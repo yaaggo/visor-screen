@@ -7,20 +7,7 @@ import './board.css'
 // proprios e de outras pessoas, para testar a lixeira (apagar/sair) e a fisica das cartas. Sem Supabase.
 const ME = 'me'
 const NAMES = ['estudio', 'gta rp', 'amigos', 'faculdade', 'noite', 'lan', 'trampo', 'cinema', 'xadrez', 'retro']
-// Foto gerada localmente (esfera com luz e um anel) para testar a foto em ASCII sem Supabase.
-function labPhoto() {
-  const c = document.createElement('canvas')
-  c.width = c.height = 256
-  const g = c.getContext('2d')
-  g.fillStyle = '#1a1a1a'; g.fillRect(0, 0, 256, 256)
-  const light = g.createRadialGradient(100, 90, 10, 128, 128, 110)
-  light.addColorStop(0, '#fff'); light.addColorStop(.5, '#888'); light.addColorStop(1, '#111')
-  g.fillStyle = light; g.beginPath(); g.arc(128, 128, 92, 0, Math.PI * 2); g.fill()
-  g.strokeStyle = '#ddd'; g.lineWidth = 10; g.beginPath(); g.ellipse(128, 136, 120, 34, -.35, 0, Math.PI * 2); g.stroke()
-  return c.toDataURL('image/png')
-}
-const PHOTO = labPhoto()
-const start = () => NAMES.map((name, i) => ({ id: 'lab-' + i, name, owner_id: i % 2 ? 'outro' : ME, ...(i === 2 ? { photo_url: PHOTO } : {}) }))
+const start = () => NAMES.map((name, i) => ({ id: 'lab-' + i, name, owner_id: i % 2 ? 'outro' : ME }))
 // Presenca simulada (radar): pessoas e transmissoes por servidor.
 const ACTIVITY = { 'lab-0': { people: 2, live: 0 }, 'lab-1': { people: 5, live: 1 }, 'lab-2': { people: 3, live: 2 }, 'lab-4': { people: 1, live: 1 } }
 

@@ -117,7 +117,7 @@ export default function ServerHub({ servers, ownerId, onDelete, onLeave, returni
   }
   useLayoutEffect(() => { showGlyph(hovered.current) }, [step, call?.server?.id, activity])
   // Pre-carrega as fotos de todas as cartas (ate 64 KiB cada) para o hover ja abrir com a foto.
-  const photoKey = servers.map(s => s.id + ':' + (serverPhotoUrl(s) ?? '')).join('|')
+  const photoKey = servers.map(s => s.id + ':' + (s.photo_url ?? s.photo_revision ?? '')).join('|')
   useLayoutEffect(() => {
     const idle = window.requestIdleCallback ?? (fn => setTimeout(fn, 200))
     idle(() => { for (const s of servers) { const url = serverPhotoUrl(s); if (url) photoMask(url, photoSize(), photoSize()) } })
