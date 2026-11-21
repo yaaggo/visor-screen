@@ -1,7 +1,7 @@
-/* Miniplayer (MiniPlayer.jsx): janela Document PiP ou cartao flutuante dentro do app */
+/* Miniplayer (MiniPlayer.jsx): janela do Electron, Document PiP ou cartao flutuante dentro do app */
 body.mini-doc { margin: 0; background: #050505; overflow: hidden; user-select: none }
-.mini { position: fixed; overflow: hidden; background: #050505; color: var(--text); display: grid; isolation: isolate }
-.mini video { width: 100%; height: 100%; object-fit: contain; grid-area: 1 / 1 }
+.mini { position: fixed; overflow: hidden; background: #050505; color: var(--text); display: grid; grid-template-rows: 1fr auto; isolation: isolate }
+.mini video { width: 100%; height: 100%; min-height: 0; object-fit: contain; grid-area: 1 / 1 / 3 / 2; background: #050505 }
 .mini.is-window { inset: 0 }
 .mini.is-floating { right: 20px; bottom: 20px; width: 360px; aspect-ratio: 16 / 9; z-index: 950; border-radius: 18px;
   border: 1px solid #ffffff2e; box-shadow: 0 18px 50px #000a, 0 0 0 1px #0008; cursor: grab;
@@ -18,15 +18,28 @@ body.mini-doc { margin: 0; background: #050505; overflow: hidden; user-select: n
   background: #000b; color: var(--text); cursor: pointer; transition: background .15s, transform .15s }
 .mini-btn:hover { background: #fff; color: #0a0a0a }
 .mini-btn:active { transform: scale(.92) }
+.mini-caption { display: none }
 @media (prefers-reduced-motion: reduce) { .mini.is-floating { animation: none } }
-/* Janela do Electron sem moldura: a faixa do topo arrasta a janela; os botoes continuam clicaveis */
-.is-desktop-mini .mini-hud { -webkit-app-region: drag; app-region: drag }
-.is-desktop-mini .mini-btn { -webkit-app-region: no-drag; app-region: no-drag }
-.is-desktop-mini .mini { border-radius: 0 }
+
+/* Desktop: janela transparente; o miniplayer fica 12 px para dentro (espaco da sombra) e arrasta por qualquer ponto.
+   Como carta (arrastando), tem a cara das cartas da mao: moldura, video cortado e o nome embaixo. */
+.is-desktop-mini .mini { inset: 12px; border-radius: 16px; border: 1px solid #ffffff2e; cursor: grab;
+  box-shadow: 0 6px 12px #0009; transition: border-radius .3s, padding .3s, border-color .2s, background .3s }
+.is-desktop-mini .mini:active { cursor: grabbing }
+.is-desktop-mini .mini.is-card { padding: 6px; gap: 5px; border-radius: 14px; border-color: #ffffff38; background: linear-gradient(150deg,#303030,#131313 78%) }
+.mini.is-card video { grid-area: 1 / 1; object-fit: cover; border-radius: 9px; border: 1px solid #ffffff16 }
+.mini.is-card .mini-hud { display: none }
+.mini.is-card .mini-caption { display: flex; align-items: center; gap: 5px; min-width: 0; padding: 0 2px; font: 600 11px/1.3 system-ui, sans-serif; color: var(--text) }
+.mini-caption span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.mini.is-card .mini-caption .live-dot { width: 6px; height: 6px; flex: none }
 
 /* Arrastando uma transmissao ate a borda da janela: a borda acende e aparece o rotulo do miniplayer */
-.pip-hint { position: fixed; inset: 0; z-index: 990; pointer-events: none; border-radius: 12px;
+.pip-hint { position: fixed; inset: 0; z-index: 990; pointer-events: none; border-radius: 8px;
   box-shadow: inset 0 0 0 2px #ffffffb0, inset 0 0 60px #ffffff1c; animation: pip-hint-in .18s ease-out both }
 .pip-hint span { position: absolute; left: 50%; top: 18px; translate: -50% 0; display: flex; align-items: center; gap: 8px; padding: 7px 14px;
   border-radius: 999px; background: #fff; color: #0a0a0a; font-size: 12px; font-weight: 650; box-shadow: 0 10px 30px #0008 }
 @keyframes pip-hint-in { from { opacity: 0 } }
+
+/* Na mao: a transmissao que esta no miniplayer (clicar ou arrastar para a mesa devolve) */
+.hand-card.is-pip .hand-art { color: var(--muted); background: repeating-linear-gradient(135deg,#ffffff06 0 8px,transparent 8px 16px),linear-gradient(135deg,#232323,#0e0e0e) }
+.hand-card.is-pip { border-style: dashed; border-color: #ffffff60 }

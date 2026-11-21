@@ -62,7 +62,10 @@ const insert = (list, index, id) => [...list.slice(0, index), id, ...list.slice(
 // Mesa de cartas da sala de tela.
 // mao: quem transmite e nao esta na mesa (+ carta de transmitir) · mesa: transmissoes abertas em posicoes
 // calculadas · destaque: uma grande e as outras em faixa · segurar uma transmissao: vira carta de novo.
-export default function CardTable({ hand, tiles, audience = [], showAdd, toasts = [], onPlace, onReturn, onPeek, onAdd, onToast, renderStage, onPip,
+// Desktop (onPipDrag): perto da borda a janela do miniplayer e preparada; quando a carta ficaria cortada pela
+// borda ela some e a janela do miniplayer assume, seguindo o cursor ('prepare' | 'out' | 'in' | 'cancel').
+// ghost {id, x, y}: o miniplayer arrastado de volta sobre o app (acende a mesa/mao); apiRef.current.dropGhost solta.
+export default function CardTable({ hand, tiles, audience = [], showAdd, toasts = [], onPlace, onReturn, onPeek, onAdd, onToast, renderStage, onPip, onPipDrag, ghost, apiRef,
   visible = true, shareOpen = false, shareTitle = 'Transmitir', shareContent = null, onShareClose, onShareSettings, onStopShare }) {
   const felt = useRef(null)
   const handRef = useRef(null)
@@ -126,7 +129,8 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, toasts 
   function targetAt(x, y, kind, id) {
     const f = felt.current.getBoundingClientRect()
     // Borda da janela (esquerda, direita, topo ou fora por baixo): a transmissao vira miniplayer.
-    if (kind === 'tile' && onPip && (x <= EDGE || y <= EDGE || x >= innerWidth - EDGE || y >= innerHeight)) return { type: 'pip' }
+    // No desktop quem decide e o arrasto (a carta saindo da janela), em follow.
+    if (kind === 'tile' && onPip && !onPipDrag && (x <= EDGE || y <= EDGE || x >= innerWidth - EDGE || y >= innerHeight)) return { type: 'pip' }
     const chip = spotChip.current?.getBoundingClientRect()
     if (chip && x >= chip.left - 8 && x <= chip.right + 8 && y >= chip.top - 8 && y <= chip.bottom + 8) return { type: 'spot' }
     if (kind === 'tile' && y > f.bottom - 4) return { type: 'hand' }
@@ -154,6 +158,7 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, toasts 
     g.detach()
     if (silent) g.copy?.remove()
     if (g.node) g.node.style.opacity = ''
+    if (g.prepared) onPipDrag?.('cancel', g.id)
     gesture.current = null
     setDrag(null)
   }
@@ -162,7 +167,19 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, toasts 
     g.dx = ev.clientX - g.x
     g.dy = ev.clientY - g.y
     g.copy.style.transform = `translate(${ev.clientX - g.x}px,${ev.clientY - g.y}px) rotate(${Math.max(-10, Math.min(10, (ev.clientX - g.x) / 20))}deg)`
-    const t = targetAt(ev.clientX, ev.clientY, g.kind, g.id)
+    if (g.kind === 'tile' && onPipDrag) {
+      const x = ev.clientX, y = ev.clientY, m = 170
+      if (!g.prepared && (x < m || y < m || x > innerWidth - m || y > innerHeight - m)) { g.prepared = true; onPipDrag('prepare', g.id) }
+      // Cortada pela esquerda, direita ou topo (por baixo fica a mao: so conta fora da janela).
+      const out = x - g.cw / 2 < 0 || y - g.ch / 2 < 0 || x + g.cw / 2 > innerWidth || y >= innerHeight - 2
+      if (out !== !!g.out) {
+        g.out = out
+        // A carta so some quando a janela do miniplayer ja esta na tela (sem um instante vazio).
+        if (out) Promise.resolve(onPipDrag('out', g.id, { w: g.cw, h: g.ch })).then(shown => { if (shown && g.out && gesture.current === g) g.copy.style.visibility = 'hidden' })
+        else { g.copy.style.visibility = ''; onPipDrag('in', g.id) }
+      }
+    }
+    const t = g.out ? { type: 'pip' } : targetAt(ev.clientX, ev.clientY, g.kind, g.id)
     if (JSON.stringify(t) !== JSON.stringify(g.target)) { g.target = t; setDrag({ id: g.id, kind: g.kind, target: t }) }
   }
 
@@ -199,6 +216,7 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, toasts 
     land(g, !!t)
     g.detach()
     gesture.current = null
+    if (g.prepared && t?.type !== 'pip') onPipDrag?.('cancel', g.id)
     if (g.node) setTimeout(() => { g.node.style.opacity = '' }, reduced() ? 0 : 240)
     if (t?.type !== 'pip') play(t?.type === 'hand' || !t ? 'back' : 'place')
     if (g.kind === 'hand') {
@@ -252,24 +270,12 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, toasts 
       g.node.style.opacity = '0'
     } else {
       const tile = tiles.find(t => t.id === g.id)
-      const cw = handRef.current?.querySelector('.hand-card')?.offsetWidth || 84
-      const ch = Math.round(cw * 1.34)
-      copy = document.createElement('div')
-      copy.className = 'hand-card'
-      const art = document.createElement('span')
-      art.className = 'hand-art'
-      if (tile?.stream) {
-        const v = document.createElement('video')
-        Object.assign(v, { muted: true, autoplay: true, playsInline: true, srcObject: tile.stream })
-        art.append(v)
-      }
-      const cap = document.createElement('span')
-      cap.className = 'hand-caption'
-      cap.innerHTML = '<span></span>'
-      cap.firstChild.textContent = tile?.name ?? ''
-      copy.append(art, cap)
+      const { cw, ch } = cardSize()
+      g.cw = cw; g.ch = ch
+      // Desktop: a janela do miniplayer ja abre escondida ao levantar a transmissao (pronta se ela sair da janela).
+      if (onPipDrag) { g.prepared = true; onPipDrag('prepare', g.id) }
       const left = g.x - cw / 2, top = g.y - ch / 2
-      Object.assign(copy.style, { left: left + 'px', top: top + 'px', width: cw + 'px', height: ch + 'px' })
+      copy = streamCard(tile?.stream, tile?.name ?? '', left, top, cw, ch)
       copy.animate([
         { left: g.home.left + 'px', top: g.home.top + 'px', width: g.home.width + 'px', height: g.home.height + 'px', borderRadius: '22px' },
         { left: left + 'px', top: top + 'px', width: cw + 'px', height: ch + 'px', borderRadius: '14px' },
@@ -281,6 +287,56 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, toasts 
     g.copy = copy
     setDrag({ id: g.id, kind: g.kind, target: null })
   }
+
+  function cardSize() {
+    const cw = handRef.current?.querySelector('.hand-card')?.offsetWidth || 84
+    return { cw, ch: Math.round(cw * 1.34) }
+  }
+  // Carta com o video da transmissao (a que segue o ponteiro), fora do React.
+  function streamCard(stream, name, left, top, cw, ch) {
+    const copy = document.createElement('div')
+    copy.className = 'hand-card'
+    const art = document.createElement('span')
+    art.className = 'hand-art'
+    if (stream) {
+      const v = document.createElement('video')
+      Object.assign(v, { muted: true, autoplay: true, playsInline: true, srcObject: stream })
+      art.append(v)
+    }
+    const cap = document.createElement('span')
+    cap.className = 'hand-caption'
+    cap.innerHTML = '<span></span>'
+    cap.firstChild.textContent = name
+    copy.append(art, cap)
+    Object.assign(copy.style, { left: left + 'px', top: top + 'px', width: cw + 'px', height: ch + 'px' })
+    return copy
+  }
+
+  // Miniplayer arrastado de volta sobre o app: a mesa e a mao acendem como num arrasto normal.
+  const ghostKey = ghost ? ghost.id + ':' + ghost.x + ':' + ghost.y : ''
+  useEffect(() => {
+    if (!ghost) { setDrag(d => d?.kind === 'ghost' ? null : d); return }
+    const t = targetAt(ghost.x, ghost.y, 'tile', ghost.id)
+    const target = t?.type === 'pip' ? null : t
+    setDrag(d => d?.kind === 'ghost' && d.id === ghost.id && JSON.stringify(d.target) === JSON.stringify(target) ? d : { id: ghost.id, kind: 'ghost', target })
+  }, [ghostKey])
+  // Soltou o miniplayer sobre o app: uma carta nasce sob o cursor e voa para a posicao na mesa (ou para a mao).
+  const dropGhost = (id, x, y, stream, name) => {
+    const t = targetAt(x, y, 'tile', id)
+    const target = t?.type === 'pip' ? null : t
+    const { cw, ch } = cardSize()
+    const copy = streamCard(stream, name, x - cw / 2, y - ch / 2, cw, ch)
+    copy.classList.add('hand-flying')
+    copy.inert = true
+    document.body.append(copy)
+    if (target?.type === 'slot') pending.current.set(id, { index: target.index })
+    if (target?.type === 'spot') pending.current.set(id, { spot: true })
+    land({ copy, target, dx: 0, dy: 0, home: copy.getBoundingClientRect() }, true)
+    play(target?.type === 'hand' ? 'back' : 'place')
+    setDrag(null)
+    return target?.type === 'hand' ? 'hand' : 'table'
+  }
+  if (apiRef) apiRef.current = { dropGhost }
 
   function handDown(e, card) {
     if (e.button !== 0 || !e.isPrimary || gesture.current) return
@@ -338,14 +394,15 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, toasts 
             <span className="hand-art"><Plus size={22} strokeWidth={1.5}/></span>
             <span className="hand-caption">Transmitir</span>
           </button>
-          return <button key={card.id} className={'hand-card' + (card.own ? ' is-own' : '')} data-z={z} style={style}
-            aria-label={(card.own ? 'Sua transmissão' : card.name) + ' · colocar na mesa'}
+          return <button key={card.id} className={'hand-card' + (card.own ? ' is-own' : '') + (card.pip ? ' is-pip' : '')} data-z={z} style={style}
+            aria-label={(card.own ? 'Sua transmissão' : card.name) + (card.pip ? ' · no miniplayer, voltar para a mesa' : ' · colocar na mesa')}
+            data-tip={card.pip ? 'No miniplayer' : undefined}
             onPointerDown={e => handDown(e, card)}
             onClick={e => { if (e.detail === 0) onPlace(card.id) }}
-            onPointerEnter={() => !gesture.current && !card.own && onPeek?.(card)}
+            onPointerEnter={() => !gesture.current && !card.own && !card.pip && onPeek?.(card)}
             onPointerLeave={() => onPeek?.(null)}>
             <span className="hand-art">
-              {card.peek
+              {card.pip ? <PictureInPicture2 size={24} strokeWidth={1.4}/> : card.peek
                 ? <video autoPlay muted playsInline ref={node => { if (node && node.srcObject !== card.peek) node.srcObject = card.peek }}/>
                 : <Avatar id={card.profileId} revision={card.photo} name={card.name} size={40}/>}
               <i className="live-dot"/>

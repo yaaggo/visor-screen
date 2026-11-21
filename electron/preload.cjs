@@ -56,5 +56,15 @@ contextBridge.exposeInMainWorld('visor', {
     remove: (name) => ipcRenderer.invoke('clips:remove', name),
   },
   replayArm: (on) => ipcRenderer.invoke('replay:arm', on),
+  // Miniplayer (mini.cjs): posicao, seguir o cursor, tamanho animado
+  mini: {
+    show: () => ipcRenderer.send('mini:show'),
+    hide: () => ipcRenderer.send('mini:hide'),
+    place: (rect) => ipcRenderer.send('mini:place', rect),
+    follow: (opts) => ipcRenderer.send('mini:follow', opts),
+    unfollow: () => ipcRenderer.invoke('mini:unfollow'),
+    resize: (opts) => ipcRenderer.send('mini:resize', opts),
+    onCursor: (callback) => subscribe('mini:cursor', callback),
+  },
   onReplaySave: (callback) => subscribe('replay:save', callback),
 })

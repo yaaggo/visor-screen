@@ -1,9 +1,10 @@
 // Visor desktop (Electron). Carrega o build web (dist/) e adiciona:
 // seletor nativo de tela/janela, captura de audio por aplicativo e permissoes de midia.
-const { app, BrowserWindow, desktopCapturer, ipcMain, screen, session, shell } = require('electron')
+const { app, BrowserWindow, desktopCapturer, ipcMain, session, shell } = require('electron')
 const path = require('node:path')
 const audio = require('./audio.cjs')
 const registerCapture = require('./capture.cjs')
+const { setupMini } = require('./mini.cjs')
 
 const DEV_URL = process.env.VISOR_DEV_URL // ex.: http://localhost:5173
 const MEDIA_PERMS = new Set(['media', 'display-capture', 'clipboard-sanitized-write', 'fullscreen'])
@@ -20,6 +21,7 @@ else {
 }
 
 let win = null
+let miniCtl = null // miniplayer (mini.cjs), criado no app.whenReady
 let priorityQueue = Promise.resolve()
 let priorityRequested = false
 let stopCapture = () => {}
@@ -58,25 +60,16 @@ function createWindow() {
   win.once('ready-to-show', () => win.show())
 
   // Links externos abrem no navegador; navegacao interna bloqueada
-  win.webContents.setWindowOpenHandler(({ url, frameName, features }) => {
+  win.webContents.setWindowOpenHandler(({ url, frameName }) => {
     // Miniplayer: janela em branco aberta pelo proprio app (o React desenha nela o video da transmissao).
-    // Sem moldura e sempre no topo, inclusive sobre jogos em tela cheia sem borda.
-    if (frameName === 'visor-mini' && url === 'about:blank') {
-      const size = Object.fromEntries(features.split(',').map(f => f.split('=')).map(([k, v]) => [k.trim(), Number(v)]))
-      const width = Math.max(240, Math.min(960, size.width || 420)), height = Math.max(135, Math.min(720, size.height || 236))
-      const area = screen.getDisplayMatching(win.getBounds()).workArea
-      return { action: 'allow', overrideBrowserWindowOptions: {
-        width, height, x: area.x + area.width - width - 24, y: area.y + area.height - height - 24,
-        minWidth: 240, minHeight: 135, frame: false, alwaysOnTop: true, maximizable: false, fullscreenable: false,
-        backgroundColor: '#050505', title: 'Visor', autoHideMenuBar: true, roundedCorners: true, icon: path.join(__dirname, 'icon.png'),
-        webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false },
-      } }
-    }
+    // Transparente, sem moldura e sempre no topo; fica escondida ate o app posicionar (mini.cjs).
+    if (frameName === 'visor-mini' && url === 'about:blank' && miniCtl)
+      return { action: 'allow', overrideBrowserWindowOptions: miniCtl.options(path.join(__dirname, 'icon.png')) }
     if (/^https?:/.test(url)) shell.openExternal(url)
     return { action: 'deny' }
   })
-  win.webContents.on('did-create-window', child => {
-    child.setAlwaysOnTop(true, 'screen-saver')
+  win.webContents.on('did-create-window', (child, { frameName }) => {
+    if (frameName === 'visor-mini') miniCtl?.attach(child)
     child.webContents.on('will-navigate', e => e.preventDefault())
   })
   win.webContents.on('will-navigate', (e, url) => {
@@ -123,6 +116,7 @@ function createWindow() {
     }
   })
   win.on('closed', () => {
+    miniCtl?.close() // o miniplayer nao segura o app aberto sem a janela principal
     audio.stopAll()
     stopCapture()
     setStreamingPriority(false)
@@ -140,6 +134,7 @@ app.on('second-instance', () => {
 app.whenReady().then(() => {
   require('./updates.cjs').registerUpdates(app, ipcMain, () => win)
   require('./clips.cjs').setupClips(() => win)
+  miniCtl = setupMini(() => win)
   stopCapture = registerCapture(() => win)
   session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => cb(MEDIA_PERMS.has(perm)))
   session.defaultSession.setPermissionCheckHandler((_wc, perm) => MEDIA_PERMS.has(perm))

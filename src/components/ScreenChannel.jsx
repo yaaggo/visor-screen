@@ -10,7 +10,7 @@ import { captureDesktop, captureDevice, captureWeb } from '../lib/sources.js'
 import { Avatar, IconButton } from './ui.jsx'
 import SharePanel, { exeKey, pref, useShareConfig } from './SharePanel.jsx'
 import CardTable from './CardTable.jsx'
-import MiniPlayer, { openMiniWindow } from './MiniPlayer.jsx'
+import MiniPlayer, { miniDesktop, miniPlayerSize, openMiniWindow, prepareMini } from './MiniPlayer.jsx'
 import { ReplayBuffer, replaySupported } from '../lib/replay.js'
 import { AppAudioMixer } from '../lib/appAudio.js'
 import { useAsciiField } from '../lib/useAsciiField.js'
@@ -282,14 +282,78 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
   const inputs = s.inputs ?? []
   const allTiles = inputs.filter(input => !input.preview)
   if (s.sharing && ownOnTable) allTiles.unshift({ id: endpointId, stream: s.local })
-  // Miniplayer: a transmissao sai da mesa mas continua sendo recebida; fechar a janela devolve a mesa.
+  // Miniplayer: a transmissao sai da mesa mas continua sendo recebida; na mao fica uma carta indicando onde ela esta.
+  // pip = { id, win, mode: 'card' | 'player', phase: 'drag' | 'open' }. 'drag': a janela segue o cursor enquanto a
+  // carta e arrastada para fora do app (a transmissao ainda e da mesa); 'open': solta fora, virou player.
   const pipTile = pip && allTiles.find(t => t.id === pip.id)
-  const tiles = allTiles.filter(t => t !== pipTile)
+  const pipOpen = pip?.phase === 'open' ? pipTile : null
+  const tiles = allTiles.filter(t => t !== pipOpen)
   useEffect(() => { if (pip && !pipTile) setPip(null) }, [pip, !!pipTile])
-  const openPip = id => {
+  const pipRef = useRef(pip)
+  pipRef.current = pip
+  const dragOut = useRef(null)
+  const [ghost, setGhost] = useState(null)
+  const tableApi = useRef(null)
+  const ratioOf = id => {
     const v = allTiles.find(t => t.id === id)?.stream?.getVideoTracks()[0]?.getSettings()
-    openMiniWindow(v?.width && v?.height ? v.width / v.height : 16 / 9)
-      .then(win => setPip({ id, win }), () => setPip({ id, win: null }))
+    return v?.width && v?.height ? v.width / v.height : 16 / 9
+  }
+  const nameOf = id => id === endpointId ? 'você' : allPeers.find(p => p.id === id)?.name ?? ''
+  const cardSize = () => { const w = document.querySelector('.hand-card')?.offsetWidth || 84; return { w, h: Math.round(w * 1.34) } }
+  // Desktop: a carta saindo pela borda vira a janela do miniplayer sob o cursor (preparada antes, perto da borda).
+  async function pipDrag(type, id, info) {
+    const mini = window.visor.mini
+    if (type === 'prepare') { prepareMini(); return }
+    if (type === 'out') {
+      dragOut.current = { id }
+      const win = await prepareMini()
+      if (!win || dragOut.current?.id !== id) return false
+      if (!pipRef.current) setPip({ id, win, mode: 'card', phase: 'drag' })
+      mini.follow({ fx: .5, fy: .5, w: info.w, h: info.h, jump: true })
+      // Mostra depois que a carta foi desenhada na janela (o React precisa de um quadro).
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+      if (dragOut.current?.id !== id) return false
+      mini.show()
+      return true
+    } else if (type === 'in') {
+      dragOut.current = null
+      mini.hide()
+    } else if (type === 'cancel') {
+      dragOut.current = null
+      // A janela preparada (escondida) fica para o proximo arrasto; com a carta ja na janela, ela fecha.
+      if (pipRef.current?.phase === 'drag') { mini.hide(); setPip(null) }
+    }
+  }
+  // Soltou a transmissao fora da mesa: no desktop a carta (janela) cresce ate o player onde foi solta.
+  const openPip = id => {
+    const p = pipRef.current, size = miniPlayerSize(ratioOf(id))
+    play('open')
+    if (miniDesktop && p?.phase === 'drag' && p.win && !p.win.closed) {
+      dragOut.current = null
+      setPip({ ...p, mode: 'player', phase: 'open' })
+      window.visor.mini.unfollow().then(() => window.visor.mini.resize({ ...size, anchor: 'grab' }))
+      return
+    }
+    if (miniDesktop) {
+      prepareMini().then(win => {
+        if (!win) return
+        setPip({ id, win, mode: 'player', phase: 'open' })
+        window.visor.mini.place({ ...size, atCursor: true })
+        window.visor.mini.show()
+      })
+      return
+    }
+    openMiniWindow(ratioOf(id)).then(win => setPip({ id, win, mode: 'player', phase: 'open' }), () => setPip({ id, win: null, mode: 'player', phase: 'open' }))
+  }
+  // O miniplayer foi arrastado de volta para cima do app e solto: vira carta na mesa (ou volta para a mao).
+  const pipDropInside = c => {
+    const p = pipRef.current
+    setGhost(null)
+    if (!p || !pipTile) return
+    const where = tableApi.current?.dropGhost(p.id, c.x, c.y, pipTile.stream, nameOf(p.id)) ?? 'table'
+    if (where === 'hand') { if (p.id === endpointId) setOwnOnTable(false); else roomRef.current.stopWatching(p.id) }
+    else placedAt.current.set(p.id, Date.now())
+    setPip(null)
   }
   const toggle = (id, peerHint = null) => {
     const room = roomRef.current
@@ -323,6 +387,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
             return { ...tile, own: tile.id === endpointId, name: tile.id === endpointId ? 'você' : peer?.name ?? '', since: placedAt.current.get(tile.id) }
           })}
           hand={[
+            ...(pipOpen ? [{ id: pipOpen.id, pip: true, own: pipOpen.id === endpointId, name: pipOpen.id === endpointId ? profile.username : nameOf(pipOpen.id), device: allPeers.find(p => p.id === pipOpen.id)?.device ?? deviceKind }] : []),
             ...(s.sharing && !ownOnTable ? [{ id: endpointId, own: true, name: profile.username, profileId: profile.id, photo, device: deviceKind }] : []),
             ...allPeers.filter(p => p.sharing && p.id !== endpointId && !allTiles.some(t => t.id === p.id)).map(p => ({
               ...p, peek: hover?.id === p.id ? inputs.find(v => v.id === p.id)?.stream ?? null : null,
@@ -347,6 +412,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
           onPeek={card => { clearTimeout(hoverTimer.current); setHover(card ? { id: card.id, peer: card } : null) }}
           onPlace={id => {
             placedAt.current.set(id, Date.now())
+            if (pipRef.current?.id === id) { setPip(null); setHover(null); return } // carta do miniplayer: volta para a mesa
             if (id === endpointId) setOwnOnTable(true)
             else roomRef.current.watch(id, false, allPeers.find(p => p.id === id))
             setHover(null)
@@ -357,6 +423,9 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
             else roomRef.current.stopWatching(id)
           }}
           onPip={openPip}
+          onPipDrag={miniDesktop ? pipDrag : undefined}
+          ghost={ghost}
+          apiRef={tableApi}
           renderStage={(tile, tools) => <Stage tools={tools} stream={tile.stream} local={tile.own} stats={tile.stats} room={roomRef.current} streamId={tile.id} replay={tile.own && replayOn}
             sendStats={s.sendStats} captureEngine={s.captureEngine} captureStats={s.captureStats}
             hasAudio={!tile.own && !!tile.stream?.getAudioTracks().length} watchingName={tile.name}/>}
@@ -364,7 +433,10 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
 
         {clipSaved && <div key={clipSaved.at} className="clip-toast" role="status"><Clapperboard size={15} strokeWidth={1.8}/>Clip salvo<span className="mono">{fmtClip(clipSaved.duration)}</span></div>}
         {pipTile && <MiniPlayer key={pip.id + (pip.win ? ':w' : ':f')} win={pip.win} stream={pipTile.stream} local={pipTile.id === endpointId}
-          name={allPeers.find(p => p.id === pipTile.id)?.name ?? ''}
+          name={nameOf(pipTile.id)} mode={pip.mode} ratio={ratioOf(pip.id)} cardSize={cardSize()}
+          onMode={mode => setPip(p => p && { ...p, mode })}
+          onGhost={c => setGhost(c && { id: pip.id, x: c.x, y: c.y })}
+          onDropInside={pipDropInside}
           onBack={() => setPip(null)}
           onClose={() => { if (pipTile.id === endpointId) setOwnOnTable(false); else roomRef.current.stopWatching(pipTile.id); setPip(null) }}/>}
         {chatChannel && (

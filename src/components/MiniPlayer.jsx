@@ -2,32 +2,53 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Undo2, Volume2, VolumeX, X } from 'lucide-react'
 import { pref } from './SharePanel.jsx'
-import { play } from '../lib/sound.js'
 import { desktop } from '../lib/env.js'
 import './mini.css'
 
-// Janela do miniplayer, sempre no topo e com o CSS do app:
-// - desktop: janela propria do Electron (window.open 'visor-mini', sem moldura; o Electron nao abre Document PiP);
-// - navegador: Document Picture-in-Picture (precisa da ativacao do gesto: chame no pointerup que soltou a transmissao);
-// - sem nenhum dos dois (Firefox/Safari): null, e o miniplayer flutua dentro do app.
+// Miniplayer de uma transmissao.
+// - Desktop: janela propria do Electron (window.open 'visor-mini', transparente e sempre no topo; mini.cjs move e
+//   redimensiona). Arrastar a transmissao para fora do app abre a janela ja como carta sob o cursor; soltar fora
+//   vira player. Arrastar o player de volta para cima do app vira carta de novo, e soltar devolve a mesa (ou a mao).
+// - Navegador: Document Picture-in-Picture; sem ele (Firefox/Safari), um cartao flutuante dentro do app.
+export const miniDesktop = desktop && !!window.visor?.mini
+const MIN_W = 280, MAX_W = 960
+
 function prepare(win) {
   for (const node of document.querySelectorAll('style, link[rel="stylesheet"]')) win.document.head.append(node.cloneNode(true))
   win.document.title = 'Visor'
   win.document.body.className = 'mini-doc' + (desktop ? ' is-desktop-mini' : '')
+  if (miniDesktop) for (const el of [win.document.documentElement, win.document.body]) el.style.background = 'transparent'
   return win
 }
+
+// Desktop: uma janela por vez, aberta escondida antes de precisar (quando o arrasto chega perto da borda).
+let deskWin = null, opening = null
+export function prepareMini() {
+  if (deskWin && !deskWin.closed) return Promise.resolve(deskWin)
+  return opening ??= (async () => {
+    const win = window.open('about:blank', 'visor-mini', 'width=200,height=200')
+    if (!win) return null
+    // Espera o documento da janela nova ficar pronto (o 'load' de about:blank nao chega; medido: pronto em ~50 ms).
+    const start = performance.now()
+    while (!win.closed && win.document.readyState !== 'complete' && performance.now() - start < 400) await new Promise(r => setTimeout(r, 16))
+    if (win.closed) return null
+    deskWin = prepare(win)
+    return win
+  })().finally(() => { opening = null })
+}
+export function closeMini(win = deskWin) { if (win && !win.closed) win.close(); if (win === deskWin) deskWin = null }
+
+// Navegador: Document PiP (precisa da ativacao do gesto: chame no pointerup que soltou a transmissao).
 export async function openMiniWindow(ratio = 16 / 9) {
   const width = 420, height = Math.round(width / ratio)
-  if (desktop) {
-    const win = window.open('about:blank', 'visor-mini', `width=${width},height=${height}`)
-    if (!win) return null
-    // O Electron cria a janela e carrega about:blank nela, trocando o documento inicial: espera essa carga
-    // antes de desenhar (senao o conteudo some e o pagehide do documento inicial fecharia o miniplayer).
-    await new Promise(done => { win.addEventListener('load', done, { once: true }); setTimeout(done, 1500) })
-    return win.closed ? null : prepare(win)
-  }
   if (!window.documentPictureInPicture) return null
   return prepare(await window.documentPictureInPicture.requestWindow({ width, height }))
+}
+
+// Tamanho do player (a largura fica entre aberturas; a roda do mouse ajusta).
+export function miniPlayerSize(ratio = 16 / 9) {
+  const w = Math.max(MIN_W, Math.min(MAX_W, pref.get('visor.miniWidth', 420)))
+  return { w, h: Math.round(w / ratio) }
 }
 
 // Som da transmissao no miniplayer: o mesmo amplificador do palco (ganho ate 300% + limitador), na janela principal.
@@ -57,14 +78,17 @@ function useStreamAudio(stream, volume, muted) {
   return !!stream?.getAudioTracks().length
 }
 
-// Miniplayer de uma transmissao: video, nome e tres acoes (som, voltar para a mesa, parar de ver).
-// win = janela do Document PiP; sem ela, um cartao flutuante arrastavel dentro do app.
-export default function MiniPlayer({ win, stream, name, local, onBack, onClose }) {
+// mode: 'card' (sendo arrastada, do tamanho de uma carta da mao) ou 'player'.
+// cardSize/ratio: tamanhos da janela; onMode: pede a troca de modo; onGhost({x,y} | null): cursor sobre o app
+// (coordenadas da pagina principal) enquanto arrasta como carta; onDropInside({x,y}): soltou sobre o app.
+export default function MiniPlayer({ win, stream, name, local, mode = 'player', ratio = 16 / 9, cardSize, onMode, onGhost, onDropInside, onBack, onClose }) {
   const video = useRef(null)
   const card = useRef(null)
   const [muted, setMuted] = useState(false)
   const volume = pref.get('visor.volumeBoost', 1.5)
-  const hasAudio = useStreamAudio(local ? null : stream, volume, muted)
+  // Sem som enquanto e carta (arrastando): o audio comeca quando vira player.
+  const hasAudio = useStreamAudio(local || mode === 'card' ? null : stream, volume, muted)
+  const desk = miniDesktop && !!win
 
   useEffect(() => {
     const v = video.current
@@ -84,22 +108,69 @@ export default function MiniPlayer({ win, stream, name, local, onBack, onClose }
     win.addEventListener('pagehide', closed)
     return () => {
       win.removeEventListener('pagehide', closed)
-      win.visorClose = setTimeout(() => { if (!win.closed) win.close() }, 0)
+      win.visorClose = setTimeout(() => closeMini(win), 0)
     }
   }, [win])
-  useEffect(() => { play('open') }, [])
+
+  // Desktop: arrastar o player move a janela (o processo principal segue o cursor). Sobre o app, vira carta;
+  // soltar ali devolve a transmissao. Fora do app, solta onde estiver (grudando nas bordas da tela).
+  const props = useRef({})
+  props.current = { mode, ratio, cardSize, onMode, onGhost, onDropInside }
+  function deskDrag(e) {
+    if (e.button !== 0 || e.target.closest('button')) return
+    const el = card.current, r = el.getBoundingClientRect()
+    const grab = { fx: (e.clientX - r.left) / r.width, fy: (e.clientY - r.top) / r.height }
+    const x0 = e.screenX, y0 = e.screenY
+    let moved = false, inside = false, last = null
+    el.setPointerCapture(e.pointerId)
+    const mini = window.visor.mini
+    const off = mini.onCursor(c => {
+      if (!moved) return
+      last = c
+      const p = props.current
+      if (c.inside !== inside) {
+        inside = c.inside
+        p.onMode?.(inside ? 'card' : 'player')
+        mini.follow(inside ? { fx: .5, fy: .5, ...p.cardSize } : { ...grab, ...miniPlayerSize(p.ratio) })
+      }
+      p.onGhost?.(inside ? c : null)
+    })
+    const move = ev => {
+      if (moved || Math.hypot(ev.screenX - x0, ev.screenY - y0) < 4) return
+      moved = true
+      mini.follow(grab)
+    }
+    const up = () => {
+      el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up)
+      off()
+      if (!moved) return
+      mini.unfollow()
+      if (inside && last) props.current.onDropInside?.(last)
+      else props.current.onGhost?.(null)
+    }
+    el.addEventListener('pointermove', move)
+    el.addEventListener('pointerup', up)
+    el.addEventListener('pointercancel', up)
+  }
+  // Roda do mouse no player: muda o tamanho (o canto perto da borda da tela fica parado).
+  function wheel(e) {
+    if (!desk || mode !== 'player') return
+    const w = Math.max(MIN_W, Math.min(MAX_W, Math.round(miniPlayerSize(ratio).w * (e.deltaY < 0 ? 1.08 : 1 / 1.08))))
+    pref.set('visor.miniWidth', w)
+    window.visor.mini.resize({ w, h: Math.round(w / ratio), anchor: 'corner' })
+  }
 
   // Sem Document PiP: arrasta o cartao pela tela (a posicao fica entre aberturas).
   const [pos, setPos] = useState(() => pref.get('visor.miniPos', null))
-  function drag(e) {
-    if (win || e.button !== 0 || e.target.closest('button')) return
+  function floatDrag(e) {
+    if (e.button !== 0 || e.target.closest('button')) return
     const node = card.current, r = node.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top
     node.setPointerCapture(e.pointerId)
     const move = ev => {
       const x = Math.max(8, Math.min(innerWidth - r.width - 8, ev.clientX - dx)), y = Math.max(8, Math.min(innerHeight - r.height - 8, ev.clientY - dy))
       node.style.left = x + 'px'; node.style.top = y + 'px'; node.style.right = 'auto'; node.style.bottom = 'auto'
     }
-    const up = ev => {
+    const up = () => {
       node.removeEventListener('pointermove', move); node.removeEventListener('pointerup', up)
       const p = { left: parseFloat(node.style.left), top: parseFloat(node.style.top) }
       if (!Number.isNaN(p.left)) { setPos(p); pref.set('visor.miniPos', p) }
@@ -108,11 +179,14 @@ export default function MiniPlayer({ win, stream, name, local, onBack, onClose }
     node.addEventListener('pointerup', up)
   }
 
-  const view = <div ref={card} className={'mini ' + (win ? 'is-window' : 'is-floating')} onPointerDown={drag}
+  const label = local ? 'você' : name
+  const view = <div ref={card} className={'mini ' + (win ? 'is-window' : 'is-floating') + ' is-' + mode}
+    onPointerDown={desk ? deskDrag : win ? undefined : floatDrag} onWheel={wheel} onDoubleClick={e => { if (!e.target.closest('button')) onBack() }}
     style={!win && pos ? { left: pos.left, top: pos.top, right: 'auto', bottom: 'auto' } : undefined}>
     <video ref={video} autoPlay playsInline muted />
+    <span className="mini-caption"><i className={'live-dot' + (local ? ' is-local' : '')}/><span>{label}</span></span>
     <div className="mini-hud">
-      <span className="mini-chip"><i className={'live-dot' + (local ? ' is-local' : '')}/>{local ? 'você' : name}</span>
+      <span className="mini-chip"><i className={'live-dot' + (local ? ' is-local' : '')}/>{label}</span>
       <span className="mini-spacer"/>
       {hasAudio && <button className="mini-btn" aria-label={muted ? 'Ativar som' : 'Mudo'} data-tip={muted ? 'Ativar som' : 'Mudo'} onClick={() => setMuted(m => !m)}>
         {muted ? <VolumeX size={15} strokeWidth={1.75}/> : <Volume2 size={15} strokeWidth={1.75}/>}</button>}
