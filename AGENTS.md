@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-19, versao 1.10.3 (reverte o Visor oculto na captura; investigacao de FPS com foco).
+Ultima atualizacao: 2026-11-21, versao 1.11.0 (lixeira apaga ou sai do servidor; fisica de prioridade das cartas; foto na carta).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -242,6 +242,26 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.11.0 — lixeira dupla, fisica das cartas e foto na carta (2026-11-21):
+- Lixeira do deck: servidor proprio = apagar (icone lixeira); servidor de outra pessoa = sair (icone porta).
+  O modo e trocado direto no DOM (`data-mode`), sem re-render: um `className` controlado pelo React apagava a
+  classe `visible` adicionada no gesto. Sair = `delete` em `server_members` (migracao 20261121120000_leave_server.sql,
+  politica "leave own memberships", aplicada no remoto; testada em transacao revertida: outro usuario 0 linhas, o proprio 1).
+- `src/lib/fanPhysics.js` (deck e mao da sala): uma carta nunca atravessa outra. Quando a ordem entre duas cartas
+  sobrepostas inverte, a que vai ficar por baixo desliza para o lado (afastando-se), a outra sobe, a ordem troca no
+  pico (190 ms) e a desviada volta por baixo. Desvio proporcional a sobreposicao, teto 22% da largura / 30 px.
+  Intencao de hover de 70 ms (varrer o leque nao puxa as cartas do caminho). Ao tirar o mouse, `.is-settling` mantem
+  o leque aberto ate a carta voltar para baixo das vizinhas; so entao o leque fecha. No deck a sobreposicao e
+  calculada no leque aberto (`overlapAt`), senao cartas distantes desviavam durante a abertura.
+- Ordem das cartas sempre da esquerda para a direita, com a carta + por cima (pedido do usuario; substitui a regra da 1.6.2).
+  O z-index de hover saiu do CSS: o controlador aplica `style.zIndex` na carta com prioridade.
+- Carta do perfil (tabuleiro) e cartas de pessoas na mao: a foto ocupa todo o quadro interno. Imagens nunca sao
+  arrastadas sozinhas (`draggable=false` + `-webkit-user-drag:none`): qualquer ponto da carta arrasta a carta.
+- QA: `npm run dev` e abrir `#/deck-teste` (DeckLab.jsx, so em DEV, sem login; servidores proprios e de outros).
+  Gravacao quadro a quadro via CDP num Chrome headless (`--remote-debugging-port=9336`): a janela do Electron, se
+  ocluida, para de renderizar e o `Input.dispatchMouseEvent` trava. Deck e mao com 8 cartas verificados.
+  Nao verificado: sair de um servidor real pela interface com duas contas.
 
 1.10.3 — reverte o Visor oculto na captura (2026-11-19):
 - Pedido do usuario: o Visor deve continuar aparecendo na captura. `setContentProtection`/`capture:hide-self`

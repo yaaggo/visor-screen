@@ -280,6 +280,12 @@ export default function Shell({ profile }) {
     setServers(prev => prev.filter(s => s.id !== row.id))
   }
 
+  const leaveServer = async row => {
+    const {error} = await supabase.from('server_members').delete().eq('server_id',row.id).eq('profile_id',profile.id).select('server_id').single()
+    if (error) throw error
+    setServers(prev => prev.filter(s => s.id !== row.id))
+  }
+
   const renameServer = async name => {
     const {data,error} = await supabase.from('servers').update({name}).eq('id',server.id).eq('owner_id',profile.id).select().single()
     if (error) return false
@@ -387,7 +393,7 @@ export default function Shell({ profile }) {
           <div id="call-head-slot" className="head-slot"/>
         </header>}
         <div className="main-body">
-          {!serverId && servers && <ServerHub ownerId={profile.id} onDelete={deleteServer} returningId={origin.current?.id} servers={servers} onSubmit={submitServer} onOpen={openServer} editProfile={() => setEditing(true)} logout={logout}/>}
+          {!serverId && servers && <ServerHub ownerId={profile.id} onDelete={deleteServer} onLeave={leaveServer} returningId={origin.current?.id} servers={servers} onSubmit={submitServer} onOpen={openServer} editProfile={() => setEditing(true)} logout={logout}/>}
           {server && !channel && <ServerBoard key={server.id} server={server} owner={isOwner} returning={returning}
             channels={channels?.filter(c => c.kind === 'screen' && c.server_id === serverId) ?? []}
             people={listedVisitors} me={{ id: endpointId, profileId: profile.id, name: profile.username, photo }}

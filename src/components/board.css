@@ -85,3 +85,7 @@
 .server-board.is-returning .board-bar { animation:board-bar-in .45s .3s var(--out) both }
 @keyframes board-bar-in { from { opacity:0; translate:0 -8px } }
 .board-zoom { border-radius:30px }
+
+/* Sua carta: a foto ocupa todo o quadro interno (sem circulo) */
+.seat-art { overflow:hidden; place-items:stretch }
+.seat-art .avatar { border:0; width:100% !important; height:100% !important; border-radius:inherit; font-size:38px !important; display:grid; place-items:center }

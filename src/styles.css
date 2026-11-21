@@ -2317,3 +2317,7 @@ button:disabled {
 .board-revealing .call-session { animation:board-fade-in .24s ease-out both }
 @keyframes board-side-in { from { opacity:0; translate:-28px 0 } }
 @keyframes board-fade-in { from { opacity:0 } }
+
+/* Fotos nunca sao arrastadas sozinhas: o gesto sempre pega a carta inteira */
+img { -webkit-user-drag:none; user-select:none }
+.deck-card img,.hand-card img,.seat-card img,.table-card img { pointer-events:none }

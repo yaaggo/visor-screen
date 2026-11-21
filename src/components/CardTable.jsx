@@ -1,9 +1,10 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Layers, MessageSquare, Monitor, Pin, PinOff, Plus, Settings2, Smartphone, Square, Star, Undo2, WifiOff, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { Avatar } from './ui.jsx'
 import './table.css'
 import { play } from '../lib/sound.js'
+import { attachFanPhysics } from '../lib/fanPhysics.js'
 
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches
 const FAIL_AFTER_MS = 15000 // sem video ate aqui, o verso avisa (o WebRTC segue tentando)
@@ -64,6 +65,13 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, toasts 
   visible = true, shareOpen = false, shareTitle = 'Transmitir', shareContent = null, onShareClose, onShareSettings, onStopShare }) {
   const felt = useRef(null)
   const handRef = useRef(null)
+  const fanDetach = useRef(null)
+  const setHand = useCallback(node => {
+    fanDetach.current?.()
+    fanDetach.current = null
+    handRef.current = node
+    if (node) fanDetach.current = attachFanPhysics(node, '.hand-card')
+  }, [])
   const spotChip = useRef(null)
   const addRef = useRef(null)
   const gesture = useRef(null)
@@ -313,15 +321,15 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, toasts 
         {!!toasts.length && <div className="table-toasts">{toasts.slice(-3).map(t =>
           <button key={t.id} className="table-toast" onClick={onToast}><MessageSquare size={12}/><b>{t.name}</b><span>{t.body}</span></button>)}</div>}
       </div>
-      {(!!cards.length || drag?.kind === 'tile') && <div ref={handRef} className={'hand' + (target?.type === 'hand' ? ' is-target' : '')} style={{ '--n': Math.max(1, cards.length) }}>
+      {(!!cards.length || drag?.kind === 'tile') && <div ref={setHand} className={'hand' + (target?.type === 'hand' ? ' is-target' : '')} style={{ '--n': Math.max(1, cards.length) }}>
         {cards.map((card, i) => {
           const d = i - mid
-          const style = { '--d': d, '--abs': Math.abs(d), zIndex: card.add ? 0 : i + 1 }
-          if (card.add) return <button key={card.id} ref={addRef} className={'hand-card hand-add' + (shareOpen ? ' is-open' : '')} style={style} aria-label="Transmitir" aria-expanded={shareOpen} onClick={onAdd}>
+          const style = { '--d': d, '--abs': Math.abs(d), '--z': i + 1 } // da esquerda para a direita, a + por cima
+          if (card.add) return <button key={card.id} ref={addRef} className={'hand-card hand-add' + (shareOpen ? ' is-open' : '')} data-z={i + 1} style={style} aria-label="Transmitir" aria-expanded={shareOpen} onClick={onAdd}>
             <span className="hand-art"><Plus size={22} strokeWidth={1.5}/></span>
             <span className="hand-caption">Transmitir</span>
           </button>
-          return <button key={card.id} className={'hand-card' + (card.own ? ' is-own' : '')} style={style}
+          return <button key={card.id} className={'hand-card' + (card.own ? ' is-own' : '')} data-z={i + 1} style={style}
             aria-label={(card.own ? 'Sua transmissão' : card.name) + ' · colocar na mesa'}
             onPointerDown={e => handDown(e, card)}
             onClick={e => { if (e.detail === 0) onPlace(card.id) }}

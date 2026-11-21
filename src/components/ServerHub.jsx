@@ -1,10 +1,11 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Layers, LogIn, LogOut, Plus, Trash2, UserRound, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, DoorOpen, Layers, LogIn, LogOut, Plus, Trash2, UserRound, X } from 'lucide-react'
 import { ServerFace, usePopover } from './ui.jsx'
 import './deck.css'
 import { play } from '../lib/sound.js'
 import SoundToggle from './SoundToggle.jsx'
+import { attachFanPhysics } from '../lib/fanPhysics.js'
 
 // Sample a unit-mass spring in four substeps per 60 Hz frame, as in Fan Cards.
 function spring(k, damping) {
@@ -30,7 +31,7 @@ function Face({server}) {
   </>
 }
 
-export default function ServerHub({ servers, ownerId, onDelete, returningId, onOpen, onSubmit, editProfile, logout }) {
+export default function ServerHub({ servers, ownerId, onDelete, onLeave, returningId, onOpen, onSubmit, editProfile, logout }) {
   const account = usePopover()
   const [page, setPage] = useState(() => Math.max(0, Math.floor(servers.findIndex(s => s.id === returningId)/serversPerPage)))
   const [step,setStep] = useState('idle')
@@ -46,6 +47,14 @@ export default function ServerHub({ servers, ownerId, onDelete, returningId, onO
   const held = useRef(false)
   const skipClick = useRef(false)
   const form = useRef(null)
+  const hand = useRef(null)
+  // Sobreposicao no leque aberto: mesmo --spread de deck.css, min(78px, (100vw - cw - 40px) / gaps).
+  useLayoutEffect(() => attachFanPhysics(hand.current, '.deck-card', {
+    overlapAt: (a, b) => {
+      const spread = Math.min(78, (innerWidth - a.offsetWidth - 40) / (Number(hand.current.style.getPropertyValue('--gaps')) || 1))
+      return a.offsetWidth - Math.abs(a.style.getPropertyValue('--d') - b.style.getPropertyValue('--d')) * spread
+    },
+  }), [])
   const deck = draw?.servers ?? servers
   const lastPage = Math.max(0, Math.ceil(deck.length / serversPerPage) - 1)
   const activePage = Math.min(page,lastPage)
@@ -133,7 +142,13 @@ export default function ServerHub({ servers, ownerId, onDelete, returningId, onO
     skipClick.current = false
     const node = e.currentTarget
     setError('')
-    if (server && server.owner_id===ownerId) trash.current.classList.add('visible')
+    if (server) {
+      // Lixeira: apaga o servidor proprio ou sai de um servidor de outra pessoa (classes no DOM, sem re-render).
+      const leave = server.owner_id!==ownerId
+      trash.current.dataset.mode = leave ? 'leave' : 'delete'
+      trash.current.setAttribute('aria-label', leave ? 'Segure por 1,5 segundo para sair' : 'Segure por 1,5 segundo para apagar')
+      trash.current.classList.add('visible')
+    }
     gesture.current = {node,server,rect:node.getBoundingClientRect(),x:e.clientX,y:e.clientY,pointer:e.pointerId}
     const up = event => release(event,server)
     const cancel = event => release(event,server,true)
@@ -162,7 +177,7 @@ export default function ServerHub({ servers, ownerId, onDelete, returningId, onO
     const r = g.copy.getBoundingClientRect()
     g.near = Math.abs(r.x+r.width/2-target.x-target.width/2)<target.width*.75 &&
       Math.abs(r.y+r.height/2-target.y-target.height/2)<target.height*.65
-    if (g.server && g.server.owner_id===ownerId) {
+    if (g.server) {
       const bin = trash.current.getBoundingClientRect()
       const inside = e.clientX>=bin.left && e.clientX<=bin.right && e.clientY>=bin.top && e.clientY<=bin.bottom
       if (inside && !g.trashTimer) {
@@ -196,8 +211,9 @@ export default function ServerHub({ servers, ownerId, onDelete, returningId, onO
       {transform:`translate(${dx}px,${dy}px) rotate(35deg) scale(.06)`,opacity:0}
     ],{duration:reduced()?1:400,fill:'forwards'})
     play('crumple')
-    try { await folding.finished; if (gesture.current===g) await onDelete(g.server) }
-    catch { if(gesture.current===g)setError('Não foi possível apagar o servidor.') }
+    const own = g.server.owner_id===ownerId
+    try { await folding.finished; if (gesture.current===g) await (own ? onDelete : onLeave)(g.server) }
+    catch { if(gesture.current===g)setError(own ? 'Não foi possível apagar o servidor.' : 'Não foi possível sair do servidor.') }
     finally { if(gesture.current===g){clearGesture();held.current=false} }
   }
   function release(e,server,cancelled=false) {
@@ -269,16 +285,17 @@ export default function ServerHub({ servers, ownerId, onDelete, returningId, onO
           {error && <small role="alert">{error}</small>}
         </div>}
     </div>
-    <div className="deck-hand" inert={step!=='idle'} style={{'--gaps':Math.max(1,cards.length-1)}}>
+    <div ref={hand} className="deck-hand" inert={step!=='idle'} style={{'--gaps':Math.max(1,cards.length-1)}}>
       {cards.map((server,i)=><button key={server?.id ?? 'add'} data-server={server?.id} aria-label={server?.name ?? 'Adicionar servidor'}
-        className={'deck-card'+(server?'':' deck-add')} data-drawn={draw && draw.id===(server?.id ?? null) ? true : undefined} style={{'--d':i-(cards.length-1)/2,'--abs':Math.abs(i-(cards.length-1)/2),'--z':server ? i+1 : 0}}
+        className={'deck-card'+(server?'':' deck-add')} data-drawn={draw && draw.id===(server?.id ?? null) ? true : undefined} data-z={i+1} style={{'--d':i-(cards.length-1)/2,'--abs':Math.abs(i-(cards.length-1)/2),'--z':i+1}}
         onPointerDown={e=>begin(e,server)}
         onLostPointerCapture={e=>release(e,server,true)} onClick={e=>{
           if(skipClick.current && e.detail!==0){skipClick.current=false;return}
           if(!held.current)fly(server,e.currentTarget,true)
         }}><Face server={server}/></button>)}
     </div>
-    <div ref={trash} className="deck-trash" aria-label="Segure por 1,5 segundo para apagar"><Trash2 size={21}/></div>
+    <div ref={trash} className="deck-trash" data-mode="delete" aria-label="Segure por 1,5 segundo para apagar">
+      <Trash2 className="bin-delete" size={21}/><DoorOpen className="bin-leave" size={21}/></div>
     {step==='idle' && error && <small className="deck-notice" role="alert">{error}</small>}
     <footer className="deck-footer"><Layers size={15}/> Deck
       {lastPage>0 && <><button disabled={activePage===0 || held.current} aria-label="Cartas anteriores" onClick={()=>setPage(activePage-1)}><ChevronLeft size={16}/></button>
