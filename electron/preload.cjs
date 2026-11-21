@@ -46,4 +46,15 @@ contextBridge.exposeInMainWorld('visor', {
   audioStop: (id) => ipcRenderer.invoke('audio:stop', id),
   onAudio: (callback) => subscribe('audio:data', callback),
   onAudioEnd: (callback) => subscribe('audio:end', callback),
+  // Clipes de replay (Videos\Visor Clips) e F9 global enquanto o replay esta armado
+  clips: {
+    save: (clip) => ipcRenderer.invoke('clips:save', clip),
+    list: () => ipcRenderer.invoke('clips:list'),
+    read: (name) => ipcRenderer.invoke('clips:read', name),
+    folder: () => ipcRenderer.invoke('clips:folder'),
+    reveal: (name) => ipcRenderer.invoke('clips:reveal', name),
+    remove: (name) => ipcRenderer.invoke('clips:remove', name),
+  },
+  replayArm: (on) => ipcRenderer.invoke('replay:arm', on),
+  onReplaySave: (callback) => subscribe('replay:save', callback),
 })

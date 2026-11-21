@@ -2342,3 +2342,14 @@ img { -webkit-user-drag:none; user-select:none }
 @keyframes ping-dot { 0% { transform: scale(0) } 12% { transform: scale(1.4) } 24%, 80% { transform: scale(1); opacity: 1 } 100% { opacity: 0 } }
 @keyframes ping-label { 0% { opacity: 0; transform: translateY(3px) } 12%, 80% { opacity: 1; transform: none } 100% { opacity: 0 } }
 @media (prefers-reduced-motion: reduce) { .stage-ping i { display: none } .stage-ping::before, .stage-ping b { animation-duration: 1.6s; animation-name: ping-label } }
+
+/* valor curto a direita do gatilho de um dropdown (ex.: duracao do replay) */
+.dd-meta { margin-left: auto; margin-right: 6px; font-size: 11px; color: var(--muted) }
+
+/* Replay: aviso curto quando o F9 salva um clipe */
+.clip-toast { position: absolute; left: 50%; top: 18px; translate: -50% 0; z-index: 30; display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border-radius: 999px; background: #fff; color: #0a0a0a; font-size: 12px; font-weight: 650; box-shadow: 0 12px 34px #000a;
+  animation: clip-toast 2.6s cubic-bezier(.22,1,.36,1) both; pointer-events: none }
+.clip-toast .mono { color: #0008; font-weight: 600 }
+@keyframes clip-toast { 0% { opacity: 0; transform: translateY(-8px) scale(.94) } 10%, 82% { opacity: 1; transform: none } 100% { opacity: 0; transform: translateY(-4px) } }
+@media (prefers-reduced-motion: reduce) { .clip-toast { animation-name: ping-label } }

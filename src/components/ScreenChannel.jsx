@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Activity, ChevronRight, Eye, Maximize, MessageSquare, Minimize, Monitor, MonitorUp, Smartphone, Square, Volume2, VolumeX, X } from 'lucide-react'
+import { Activity, ChevronRight, Clapperboard, Eye, Maximize, MessageSquare, Minimize, Monitor, MonitorUp, Smartphone, Square, Volume2, VolumeX, X } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { deviceKind, endpointId } from '../lib/presence.js'
 import { ScreenRoom } from '../lib/screen.js'
@@ -11,6 +11,7 @@ import { Avatar, IconButton } from './ui.jsx'
 import SharePanel, { exeKey, pref, useShareConfig } from './SharePanel.jsx'
 import CardTable from './CardTable.jsx'
 import MiniPlayer, { openMiniWindow } from './MiniPlayer.jsx'
+import { ReplayBuffer, replaySupported } from '../lib/replay.js'
 import { play } from '../lib/sound.js'
 import TextChannel from './TextChannel.jsx'
 
@@ -113,6 +114,33 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
     room.join()
     return () => room.leave()
   }, [channel.id, profile.id, profile.username])
+
+  // Replay (F9): no ar com o replay ligado, guarda os ultimos segundos; F9 (atalho global) salva o clipe
+  // em Videos\Visor Clips com miniatura. Desliga junto com a transmissao.
+  const [clipSaved, setClipSaved] = useState(null)
+  const replayOn = desktop && !!window.visor?.clips && !!cfg.replay && s.sharing && !!s.local && replaySupported()
+  useEffect(() => {
+    if (!replayOn) return
+    const buffer = new ReplayBuffer(s.local, { seconds: cfg.replay }).start()
+    let saving = false, hide
+    window.visor.replayArm(true)
+    const off = window.visor.onReplaySave(async () => {
+      if (saving) return
+      saving = true
+      try {
+        const [thumb, clip] = await Promise.all([buffer.thumbnail(), buffer.save()])
+        if (!clip?.blob.size) return
+        const data = new Uint8Array(await clip.blob.arrayBuffer())
+        const saved = await window.visor.clips.save({ data, thumb, ext: 'webm', meta: { duration: clip.duration, source: channel.name } })
+        if (!saved) return
+        play('chime')
+        clearTimeout(hide)
+        setClipSaved({ duration: clip.duration, at: Date.now() })
+        hide = setTimeout(() => setClipSaved(null), 2600)
+      } finally { saving = false }
+    })
+    return () => { off(); clearTimeout(hide); window.visor.replayArm(false); buffer.stop() }
+  }, [replayOn, s.local, cfg.replay, channel.id])
 
   // Ping na propria transmissao com a previa fora da mesa: ao menos o som avisa quem transmite.
   const ownShown = useRef(true)
@@ -313,11 +341,12 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
             else roomRef.current.stopWatching(id)
           }}
           onPip={openPip}
-          renderStage={(tile, tools) => <Stage tools={tools} stream={tile.stream} local={tile.own} stats={tile.stats} room={roomRef.current} streamId={tile.id}
+          renderStage={(tile, tools) => <Stage tools={tools} stream={tile.stream} local={tile.own} stats={tile.stats} room={roomRef.current} streamId={tile.id} replay={tile.own && replayOn}
             sendStats={s.sendStats} captureEngine={s.captureEngine} captureStats={s.captureStats}
             hasAudio={!tile.own && !!tile.stream?.getAudioTracks().length} watchingName={tile.name}/>}
         />
 
+        {clipSaved && <div key={clipSaved.at} className="clip-toast" role="status"><Clapperboard size={15} strokeWidth={1.8}/>Clip salvo<span className="mono">{fmtClip(clipSaved.duration)}</span></div>}
         {pipTile && <MiniPlayer key={pip.id + (pip.win ? ':w' : ':f')} win={pip.win} stream={pipTile.stream} local={pipTile.id === endpointId}
           name={allPeers.find(p => p.id === pipTile.id)?.name ?? ''}
           onBack={() => setPip(null)}
@@ -353,7 +382,9 @@ function videoFrame(video) {
   return { left: box.left + (box.width - w) / 2, top: box.top + (box.height - h) / 2, w, h, box }
 }
 
-export function Stage({ tools, stream, local, stats, sendStats, captureEngine, captureStats, watchingName, hasAudio, room, streamId }) {
+const fmtClip = s => Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0')
+
+export function Stage({ tools, stream, local, stats, sendStats, captureEngine, captureStats, watchingName, hasAudio, room, streamId, replay }) {
   const [diag, setDiag] = useState(() => pref.get('visor.diag', false))
   const video = useRef(null)
   const box = useRef(null)
@@ -493,6 +524,7 @@ export function Stage({ tools, stream, local, stats, sendStats, captureEngine, c
             <span className={`live-dot ${local ? 'is-local' : ''}`} />
             {local ? 'voce' : watchingName}
           </span>
+          {local && replay && <span className="hud-chip" data-tip="Replay ligado: F9 salva o clipe"><Clapperboard size={12} strokeWidth={1.9}/>F9</span>}
           {stats && !local && (
             <span className="hud-chip mono">
               {stats.height ? `${stats.height}p` : '–'} · {stats.decoded ?? '–'} · {stats.kbps == null ? '–' : fmtMbps(stats.kbps * 1000)}

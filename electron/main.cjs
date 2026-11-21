@@ -139,6 +139,7 @@ app.on('second-instance', () => {
 
 app.whenReady().then(() => {
   require('./updates.cjs').registerUpdates(app, ipcMain, () => win)
+  require('./clips.cjs').setupClips(() => win)
   stopCapture = registerCapture(() => win)
   session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => cb(MEDIA_PERMS.has(perm)))
   session.defaultSession.setPermissionCheckHandler((_wc, perm) => MEDIA_PERMS.has(perm))

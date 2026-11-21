@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowUpToLine, AppWindow, AudioLines, Check, ChevronDown, Cpu, Gauge, LoaderCircle, Monitor, RefreshCw, Speaker, Video, VolumeX } from 'lucide-react'
+import { ArrowUpToLine, AppWindow, AudioLines, Check, ChevronDown, Clapperboard, Cpu, Gauge, LoaderCircle, Monitor, RefreshCw, Speaker, Video, VolumeX } from 'lucide-react'
 import { BITRATES, PRESETS, fmtMbps, getPreset, snapBitrate } from '../lib/quality.js'
 import { desktop } from '../lib/env.js'
 import { listDevices, matchAudio } from '../lib/sources.js'
 import { measureUpload } from '../lib/net.js'
+import { replaySupported } from '../lib/replay.js'
 import { IconButton, Segmented } from './ui.jsx'
 
 export const pref = {
@@ -39,6 +40,7 @@ export function useShareConfig() {
     exclude: pref.get('visor.exclude', []), // exes (minusculo) que NAO entram no audio (so desktop)
     presetId: pref.get('visor.preset', '1080p60'),
     bitrate: pref.get('visor.bitrate', getPreset(pref.get('visor.preset', '1080p60')).bitrate),
+    replay: pref.get('visor.replay', 0), // 0 = desligado; 30/60 = segundos guardados para o F9 (so desktop)
   }))
   const update = useCallback((patch) => {
     setCfg((c) => {
@@ -52,6 +54,7 @@ export function useShareConfig() {
       pref.set('visor.exclude', next.exclude)
       pref.set('visor.preset', next.presetId)
       pref.set('visor.bitrate', next.bitrate)
+      pref.set('visor.replay', next.replay)
       return next
     })
   }, [])
@@ -87,6 +90,7 @@ export default function SharePanel({ cfg, update, live, open, peers, uplink, app
       {!live && open && cfg.kind === 'device' && <DevicePicker cfg={cfg} update={update} />}
       {!live && open && nativeCapture && cfg.kind !== 'device' && <EnginePicker cfg={cfg} update={update} />}
       {cfg.kind !== 'device' && open && <AudioPicker cfg={cfg} update={update} apps={apps} />}
+      {open && desktop && window.visor?.clips && replaySupported() && <ReplayPicker cfg={cfg} update={update} />}
 
       <div className="sp-row">
         <Segmented
@@ -107,6 +111,34 @@ export default function SharePanel({ cfg, update, live, open, peers, uplink, app
 
       <BitrateRow cfg={cfg} update={update} peers={peers} uplink={uplink} live={live} open={open} onStart={onStart} />
     </div>
+  )
+}
+
+// Replay: guarda os ultimos segundos da transmissao; F9 (mesmo com o jogo em foco) salva o clipe.
+function ReplayPicker({ cfg, update }) {
+  const options = [[0, 'Desligado'], [30, '30 s'], [60, '1 min']]
+  return (
+    <Dropdown label="Replay" trigger={
+      <>
+        <Clapperboard size={14} strokeWidth={1.75} className="dd-lead" />
+        <span className="dd-name">{cfg.replay ? 'Replay · F9' : 'Replay'}</span>
+        {!!cfg.replay && <span className="dd-meta mono">{cfg.replay === 60 ? '1 min' : '30 s'}</span>}
+      </>
+    }>
+      <ul className="dd-list" role="radiogroup" aria-label="Replay">
+        {options.map(([seconds, name]) => {
+          const on = (cfg.replay || 0) === seconds
+          return (
+            <li key={seconds}>
+              <button type="button" role="radio" aria-checked={on} className={`dd-row ${on ? 'is-on' : ''}`} onClick={() => update({ replay: seconds })}>
+                <span className="dd-check is-radio">{on && <Check size={11} strokeWidth={2.5} />}</span>
+                <span className="dd-name">{name}</span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </Dropdown>
   )
 }
 
