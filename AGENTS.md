@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-21, versao 1.12.0 (cartas sem atravessar, call no centro do deck, entrada na call sem tabuleiro vazio).
+Ultima atualizacao: 2026-11-21, versao 1.12.1 (carta endireita a caminho do centro).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -242,6 +242,11 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.12.1 — carta endireita a caminho do centro (2026-11-21):
+- Arrastando uma carta do deck, a inclinacao do leque diminui conforme ela se aproxima do centro (smoothstep sobre a
+  distancia, reta a 80% do caminho) e no voo final termina em 0. Se voltar para a mao, retoma o angulo do leque.
+  Medido via CDP no DeckLab: -6deg no deck, 0deg a 80% do caminho, sem salto ao encaixar.
 
 1.12.0 — leque sem atravessar, call no centro do deck (2026-11-21):
 - `src/lib/fanPhysics.js` reescrito. Ordem base: a carta mais a esquerda por cima, a + por baixo (pedido do usuario,

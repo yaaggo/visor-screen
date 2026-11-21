@@ -97,6 +97,7 @@ export default function ServerHub({ servers, ownerId, onDelete, onLeave, returni
     }
   },[step,selected,onOpen])
 
+  const tiltOf = node => parseFloat(getComputedStyle(node).rotate) || 0
   function copyCard(node,rect) {
     play('lift')
     const copy = document.createElement('div')
@@ -125,8 +126,11 @@ export default function ServerHub({ servers, ownerId, onDelete, onLeave, returni
     center.current.classList.remove('target','near')
     const dx = to.left + to.width/2 - from.left - from.width/2
     const dy = to.top + to.height/2 - from.top - from.height/2
-    const animation = copy.animate([{transform:'none'},{transform:`translate(${dx}px,${dy}px) scale(${to.width/from.width},${to.height/from.height})` }],
-      {duration:reduced()?1: g.moved ? 280 : 230,easing:'cubic-bezier(.2,.8,.2,1)',fill:'forwards'})
+    const timing = {duration:reduced()?1: g.moved ? 280 : 230,easing:'cubic-bezier(.2,.8,.2,1)',fill:'forwards'}
+    const animation = copy.animate([{transform:'none'},{transform:`translate(${dx}px,${dy}px) scale(${to.width/from.width},${to.height/from.height})` }],timing)
+    // A inclinacao termina reta no centro, ou volta a do leque se a carta retorna para a mao.
+    const face = copy.firstElementChild
+    face.animate([{rotate:face.style.rotate},{rotate:accept ? '0deg' : tiltOf(node)+'deg'}],timing)
     animation.onfinish = () => {
       if (gesture.current !== g) return
       if (accept) {
@@ -178,6 +182,12 @@ export default function ServerHub({ servers, ownerId, onDelete, onLeave, returni
     g.copy.style.transform = `translate(${dx}px,${dy}px)`
     const target = center.current.getBoundingClientRect()
     const r = g.copy.getBoundingClientRect()
+    // Endireita aos poucos conforme se afasta do deck: reta um pouco antes de chegar ao centro.
+    const tx = target.x+target.width/2, ty = target.y+target.height/2
+    const start = Math.hypot(g.rect.x+g.rect.width/2-tx, g.rect.y+g.rect.height/2-ty) || 1
+    const k = Math.min(1, Math.max(0, (1 - Math.hypot(r.x+r.width/2-tx, r.y+r.height/2-ty)/start)/.8))
+    g.tilt ??= parseFloat(g.copy.firstElementChild.style.rotate) || 0
+    g.copy.firstElementChild.style.rotate = (g.tilt*(1-k*k*(3-2*k))).toFixed(2)+'deg'
     g.near = Math.abs(r.x+r.width/2-target.x-target.width/2)<target.width*.75 &&
       Math.abs(r.y+r.height/2-target.y-target.height/2)<target.height*.65
     if (g.server) {
