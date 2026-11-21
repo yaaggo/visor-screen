@@ -80,12 +80,14 @@ export default function ServerHub({ servers, ownerId, onDelete, onLeave, returni
   useLayoutEffect(() => { field.current?.pause(!!call?.live) }, [call?.live])
   // Texto do centro: foto da carta em foco em ASCII (ou as iniciais, sem foto); sem foco, a marca respirando.
   // Some com a call no centro ou o seletor aberto. A foto carrega uma vez e fica em cache; ate la, as iniciais.
-  // A foto usa o espaco livre entre a barra do topo e o deck (com as contagens acima): maior resolucao possivel.
+  // A foto fica no centro do deck (mesmo lugar da vaga e das iniciais), do tamanho de pouco mais que uma carta,
+  // menor se o deck ou o topo estiverem perto (as contagens ficam acima dela).
   function photoBox() {
     const root = canvas.current.parentElement.getBoundingClientRect(), ch = center.current?.offsetHeight || 200
-    const top = root.top + 56, bottom = hand.current.getBoundingClientRect().top - 30, free = bottom - top - 30
-    const size = Math.max(ch * .9, Math.min(ch * 1.9, free, innerWidth * .5))
-    return { size, cy: top + 30 + free / 2 }
+    const cy = root.top + root.height / 2
+    const below = hand.current.getBoundingClientRect().top - 24 - cy, above = cy - root.top - 56 - 30
+    const size = Math.max(ch * .8, Math.min(ch * 1.15, below * 2, above * 2))
+    return { size, cy }
   }
   const photoSize = () => photoBox().size
   function showGlyph(server) {
