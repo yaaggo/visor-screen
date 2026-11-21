@@ -6,6 +6,8 @@ import { play } from '../lib/sound.js'
 import { supabase } from '../lib/supabase.js'
 import { deviceKind, endpointId, presencePublisher } from '../lib/presence.js'
 import { go, useRoute } from '../lib/route.js'
+import { useRadar } from '../lib/radar.js'
+import { acquireTopic, presenceList } from '../lib/topics.js'
 import { Avatar, CopyButton, IconButton, ServerFace, usePopover } from './ui.jsx'
 import ServerHub from './ServerHub.jsx'
 import UpdateButton from './UpdateButton.jsx'
@@ -133,7 +135,6 @@ export default function Shell({ profile }) {
   const directory = useRef(null)
   const member = useRef(null)
   const [visitors, setVisitors] = useState([])
-  const [directoryRetry, setDirectoryRetry] = useState(0)
   const reportMember = useCallback(value => {
     member.current = value
     // Effects can replace a status during the same React commit.
@@ -146,11 +147,20 @@ export default function Shell({ profile }) {
     setVisitors([])
     if (!directoryServer) return
     let alive = true
-    const dir = supabase.channel('calls:' + directoryServer, { config: { private: true, presence: { key: endpointId } } })
+    // Canal compartilhado (topics.js): reabre sozinho se o servidor fechar e avisa 'SUBSCRIBED' de novo.
+    const topic = acquireTopic('calls:' + directoryServer, {
+      onSync: state => { if (alive) setVisitors(presenceList(state)) },
+      onStatus: status => {
+        if (!alive || status !== 'SUBSCRIBED') return
+        directory.current = publisher
+        publisher.reset()
+      },
+    })
     let tracked = false
     const payload = () => member.current && { ...member.current, endpointId, profileId: profile.id, device: member.current.device ?? deviceKind }
     const publisher = presencePublisher(() => {
-      if (dir.state !== 'joined') return
+      const dir = topic.channel
+      if (!dir || dir.state !== 'joined') return
       if (member.current) {
         tracked = true
         return dir.track(payload())
@@ -161,32 +171,19 @@ export default function Shell({ profile }) {
       })
     }, {
       snapshot: () => JSON.stringify(payload() ?? null),
-      present: () => dir.state !== 'joined' ? null : member.current ? endpointId in dir.presenceState() : !tracked,
+      present: () => { const dir = topic.channel; return !dir || dir.state !== 'joined' ? null : member.current ? endpointId in dir.presenceState() : !tracked },
     })
-    dir.on('presence', { event: 'sync' }, () => {
-      if (alive) setVisitors(Object.entries(dir.presenceState()).flatMap(([id, entries]) => entries.map(meta => ({ ...meta, id }))))
-    }).subscribe(status => {
-      if (!alive) return
-      if (status === 'SUBSCRIBED') {
-        directory.current = publisher
-        publisher.reset()
-      }
-      // Canal fechado pelo servidor (ex.: limite de presenca): recria a assinatura.
-      if (status === 'CLOSED' || status === 'CHANNEL_ERROR') setTimeout(() => alive && setDirectoryRetry(n => n + 1), 3000)
-    })
-    return () => { alive = false; publisher.close(); directory.current = null; supabase.removeChannel(dir) }
-  }, [directoryServer, profile.id, directoryRetry])
+    // O canal pode seguir aberto para o tabuleiro/radar: a propria presenca sai explicitamente.
+    return () => { alive = false; publisher.close(); directory.current = null; if (tracked) topic.channel?.untrack(); topic.release() }
+  }, [directoryServer, profile.id])
 
   const [browsingVisitors, setBrowsingVisitors] = useState([])
   useEffect(() => {
     setBrowsingVisitors([])
     if (!serverId || serverId === directoryServer) return
-    const dir = supabase.channel('calls:' + serverId, {config:{private:true,presence:{key:endpointId}}})
-    dir.on('presence',{event:'sync'},() => {
-      setBrowsingVisitors(Object.entries(dir.presenceState()).flatMap(([id, entries]) =>
-        entries.map(meta => ({...meta,id}))))
-    }).subscribe()
-    return () => { supabase.removeChannel(dir) }
+    let alive = true
+    const topic = acquireTopic('calls:' + serverId, { onSync: state => { if (alive) setBrowsingVisitors(presenceList(state)) } })
+    return () => { alive = false; topic.release() }
   }, [serverId, directoryServer])
   const roster = new Map()
   for (const visitor of directoryServer === serverId ? visitors : browsingVisitors) {
@@ -199,6 +196,8 @@ export default function Shell({ profile }) {
       sharing:visitors.some(v => (v.endpointId ?? v.id) === endpointId && v.channel === call.id && v.sharing) })
   }
   const listedVisitors = [...roster.values()]
+  // Radar do deck: atividade de cada servidor (o da call vem do diretorio que ja esta aberto).
+  const radar = useRadar(servers ? servers.map(s => s.id) : [], !serverId)
 
   const server = servers?.find((s) => s.id === serverId) ?? null
   // Canais ja vistos por servidor: voltar a um servidor mostra as mesas na hora, sem o tabuleiro vazio
@@ -430,7 +429,7 @@ export default function Shell({ profile }) {
           {!serverId && servers && <ServerHub call={call ? { server:servers.find(s => s.id === call.server_id), name:call.name, connected,
               live:visitors.some(v => (v.endpointId ?? v.id) === endpointId && v.channel === call.id && v.sharing) } : null}
             onResume={node => { const row = servers.find(s => s.id === call?.server_id); if (row) openServer(row, node) }} onHangup={disconnect}
-            ownerId={profile.id} onDelete={deleteServer} onLeave={leaveServer} returningId={origin.current?.id} servers={servers} onSubmit={submitServer} onOpen={openServer} editProfile={() => setEditing(true)} logout={logout}/>}
+            activity={radar} ownerId={profile.id} onDelete={deleteServer} onLeave={leaveServer} returningId={origin.current?.id} servers={servers} onSubmit={submitServer} onOpen={openServer} editProfile={() => setEditing(true)} logout={logout}/>}
           {server && !channel && <ServerBoard key={server.id} server={server} owner={isOwner} returning={returning}
             channels={knownChannels?.filter(c => c.kind === 'screen' && c.server_id === serverId) ?? []}
             people={listedVisitors} me={{ id: endpointId, profileId: profile.id, name: profile.username, photo }}

@@ -1,11 +1,12 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import { ArrowLeft, ArrowRight, Cast, ChevronLeft, ChevronRight, DoorOpen, Layers, LogIn, LogOut, Plus, Radio, Trash2, UserRound, X } from 'lucide-react'
-import { ServerFace, usePopover } from './ui.jsx'
+import { ArrowLeft, ArrowRight, Cast, ChevronLeft, ChevronRight, DoorOpen, Layers, LogIn, LogOut, Plus, Radio, Trash2, UserRound, Users, X } from 'lucide-react'
+import { ServerFace, serverInitials, serverPhotoUrl, usePopover } from './ui.jsx'
 import './deck.css'
 import { play } from '../lib/sound.js'
 import SoundToggle from './SoundToggle.jsx'
 import { attachFanPhysics } from '../lib/fanPhysics.js'
+import { createAsciiField, photoMask } from '../lib/asciiField.js'
 
 // Sample a unit-mass spring in four substeps per 60 Hz frame, as in Fan Cards.
 function spring(k, damping) {
@@ -24,14 +25,16 @@ const springs = { '--fan':spring(220,18), '--lift':spring(420,20), '--scale':spr
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches
 const serversPerPage = 3
 
-function Face({server}) {
+function Face({server, live}) {
   return <>
+    {live && <i className="live-dot deck-live" aria-hidden/>}
     <span className="deck-art">{server ? <ServerFace server={server}/> : <Plus size={36} strokeWidth={1.4}/>}</span>
     <span className="deck-caption">{server?.name ?? 'Adicionar servidor'}</span>
   </>
 }
 
-export default function ServerHub({ servers, ownerId, onDelete, onLeave, returningId, onOpen, onSubmit, editProfile, logout, call, onResume, onHangup }) {
+// activity (opcional): { [serverId]: { people, live } } vindo da presenca; acende cartas, aneis e contagens.
+export default function ServerHub({ servers, ownerId, onDelete, onLeave, returningId, onOpen, onSubmit, editProfile, logout, call, onResume, onHangup, activity }) {
   const account = usePopover()
   // A call em andamento fica no centro do deck, fora da mao.
   const inHand = list => list.filter(s => s.id !== call?.server?.id)
@@ -51,6 +54,80 @@ export default function ServerHub({ servers, ownerId, onDelete, onLeave, returni
   const form = useRef(null)
   const hand = useRef(null)
   const callRef = useRef(null)
+  const canvas = useRef(null)
+  const field = useRef(null)
+  const peek = useRef(null)
+  const hovered = useRef(undefined)
+  const hub = useRef({ step, call:null, activity })
+  hub.current = { step, call, activity }
+  // Campo ASCII atras do deck: lente do mouse, onda ao tocar o fundo e aneis das cartas ao vivo.
+  useLayoutEffect(() => {
+    const root = canvas.current.parentElement
+    const f = field.current = createAsciiField(canvas.current, { reduced: reduced() })
+    if (import.meta.env.DEV) window.__field = f
+    const over = e => { if (e.pointerType !== 'touch') f.pointer(e.clientX, e.clientY) }
+    const out = e => { if (!e.relatedTarget) f.leave() }
+    const tap = e => { if (e.target === root || e.target === canvas.current) f.wave(e.clientX, e.clientY, { strength:.38, width:34, life:950, speed:420 }) }
+    addEventListener('pointermove', over)
+    document.addEventListener('pointerout', out)
+    root.addEventListener('pointerdown', tap)
+    f.beacons(() => [...hand.current.querySelectorAll('.deck-card[data-live]')].filter(n => n.style.opacity !== '0').map(n => {
+      const r = n.getBoundingClientRect()
+      return { x:r.left + r.width/2, y:r.top + r.height/2 }
+    }))
+    return () => { f.destroy(); field.current = null; removeEventListener('pointermove', over); document.removeEventListener('pointerout', out); root.removeEventListener('pointerdown', tap) }
+  }, [])
+  useLayoutEffect(() => { field.current?.pause(!!call?.live) }, [call?.live])
+  // Texto do centro: foto da carta em foco em ASCII (ou as iniciais, sem foto); sem foco, a marca respirando.
+  // Some com a call no centro ou o seletor aberto. A foto carrega uma vez e fica em cache; ate la, as iniciais.
+  // A foto usa o espaco livre entre a barra do topo e o deck (com as contagens acima): maior resolucao possivel.
+  function photoBox() {
+    const root = canvas.current.parentElement.getBoundingClientRect(), ch = center.current?.offsetHeight || 200
+    const top = root.top + 56, bottom = hand.current.getBoundingClientRect().top - 30, free = bottom - top - 30
+    const size = Math.max(ch * .9, Math.min(ch * 1.9, free, innerWidth * .5))
+    return { size, cy: top + 30 + free / 2 }
+  }
+  const photoSize = () => photoBox().size
+  function showGlyph(server) {
+    const f = field.current, el = center.current
+    if (!f || !el) return
+    const { step, call, activity } = hub.current
+    hovered.current = server
+    const cw = el.offsetWidth, ch = el.offsetHeight
+    const url = server && serverPhotoUrl(server)
+    const photo = url && photoMask(url, photoSize(), photoSize())
+    if (photo && !photo.ready && !photo.failed) photo.promise.then(() => { if (hovered.current === server) showGlyph(server) })
+    let height = ch * .95
+    if (step !== 'idle' || call?.server) f.glyph(null)
+    else if (server === undefined) f.glyph({ text:'VISOR', width:Math.min(innerWidth * .56, cw * 4.4), height:ch * .74, strength:.36, breathe:true })
+    else if (photo?.ready) {
+      const { size, cy } = photoBox()
+      height = size
+      f.glyph({ mask:photo.ready, shade:true, strength:.62, cy, key:'photo:' + url + ':' + photo.ready.cols + ':' + Math.round(cy) })
+      peek.current.style.top = Math.round(cy - size / 2 - 26 - canvas.current.parentElement.getBoundingClientRect().top) + 'px'
+    }
+    else f.glyph({ text:server ? serverInitials(server.name).toUpperCase() : '+', width:cw * 2.3, height:ch * (server ? .95 : 1.5), strength:.5 })
+    if (!photo?.ready) peek.current.style.top = `calc(50% - ${Math.round(height / 2 + 26)}px)`
+    const a = server && activity?.[server.id]
+    peek.current.classList.toggle('visible', !!a && step === 'idle' && !call?.server)
+    if (a) peek.current.dataset.live = a.live ? 'true' : 'false'
+    if (a) for (const [key, value] of Object.entries({ people:a.people, live:a.live })) peek.current.querySelector(`[data-count=${key}]`).textContent = value
+  }
+  useLayoutEffect(() => { showGlyph(hovered.current) }, [step, call?.server?.id, activity])
+  // Pre-carrega as fotos de todas as cartas (ate 64 KiB cada) para o hover ja abrir com a foto.
+  const photoKey = servers.map(s => s.id + ':' + (serverPhotoUrl(s) ?? '')).join('|')
+  useLayoutEffect(() => {
+    const idle = window.requestIdleCallback ?? (fn => setTimeout(fn, 200))
+    idle(() => { for (const s of servers) { const url = serverPhotoUrl(s); if (url) photoMask(url, photoSize(), photoSize()) } })
+  }, [photoKey])
+  // Entre duas cartas vizinhas o ponteiro sai de uma e entra na outra: espera um pouco antes de voltar a marca.
+  const leaveTimer = useRef(0)
+  function focusCard(server) {
+    clearTimeout(leaveTimer.current)
+    if (server === undefined) leaveTimer.current = setTimeout(() => showGlyph(undefined), 110)
+    else showGlyph(server)
+  }
+  useLayoutEffect(() => () => clearTimeout(leaveTimer.current), [])
   // Posicao no leque aberto: mesmo --spread de deck.css, min(78px, (100vw - cw - 40px) / gaps).
   useLayoutEffect(() => attachFanPhysics(hand.current, '.deck-card', {
     positionAt: card => {
@@ -73,6 +150,8 @@ export default function ServerHub({ servers, ownerId, onDelete, onLeave, returni
     }
     trash.current?.classList.remove('visible','arming')
     center.current?.classList.remove('target','near')
+    field.current?.drag(null)
+    field.current?.trash(null)
   }
   useLayoutEffect(() => () => { clearTimeout(timer.current); clearGesture() }, [])
   useLayoutEffect(() => {
@@ -89,6 +168,7 @@ export default function ServerHub({ servers, ownerId, onDelete, onLeave, returni
         wave.style.setProperty('--cy', r.top + r.height / 2 + 'px')
         document.body.append(wave)
         setTimeout(() => wave.remove(), 1100)
+        field.current?.wave(r.left + r.width / 2, r.top + r.height / 2, { strength:.95, width:70, life:800 })
       }
       timer.current = setTimeout(() => {
         if (center.current) onOpen(selected,center.current)
@@ -204,9 +284,12 @@ export default function ServerHub({ servers, ownerId, onDelete, onLeave, returni
         g.copy?.classList.remove('arming')
       }
       if (inside) g.near=false
+      field.current?.trash(inside ? { x:bin.left + bin.width/2, y:bin.top + bin.height/2 } : null)
     }
     center.current.classList.add('target')
     center.current.classList.toggle('near',g.near)
+    field.current?.drag({ rect:target, near:g.near })
+    peek.current?.classList.remove('visible')
   }
   async function discard(g) {
     if (gesture.current!==g || held.current) return
@@ -224,6 +307,7 @@ export default function ServerHub({ servers, ownerId, onDelete, onLeave, returni
       {transform:`translate(${dx}px,${dy}px) rotate(35deg) scale(.06)`,opacity:0}
     ],{duration:reduced()?1:400,fill:'forwards'})
     play('crumple')
+    field.current?.wave(bin.x + bin.width/2, bin.y + bin.height/2, { strength:.5, width:30, life:700, speed:380 })
     const own = g.server.owner_id===ownerId
     try { await folding.finished; if (gesture.current===g) await (own ? onDelete : onLeave)(g.server) }
     catch { if(gesture.current===g)setError(own ? 'Não foi possível apagar o servidor.' : 'Não foi possível sair do servidor.') }
@@ -238,6 +322,8 @@ export default function ServerHub({ servers, ownerId, onDelete, onLeave, returni
     clearTimeout(g.trashTimer)
     trash.current.classList.remove('visible','arming')
     g.detach?.()
+    field.current?.drag(null)
+    field.current?.trash(null)
     fly(server,g.node,!cancelled && g.near)
   }
   function reset() {
@@ -339,6 +425,8 @@ export default function ServerHub({ servers, ownerId, onDelete, onLeave, returni
   const callTip = call ? (call.live ? 'Transmitindo em ' : 'Na sala ') + call.name : ''
   return <section className="server-hub deck-hub" aria-label="Deck de servidores" style={springs}
     onKeyDown={e=>{if(e.key==='Escape' && !busy && ['choose','create','join'].includes(step))reset()}}>
+    <canvas ref={canvas} className="deck-field" aria-hidden/>
+    <div ref={peek} className="deck-peek" aria-hidden><span><Users size={13}/><b data-count="people"/></span><span className="peek-live"><Radio size={13}/><b data-count="live"/></span></div>
     <header className="hub-titlebar"><div ref={account.ref} className="hub-account">
       <button className="hub-brand" aria-label="Menu da conta" aria-expanded={account.open} onClick={()=>account.setOpen(!account.open)}><i className="brand-mark" aria-hidden/>Visor</button>
       {account.open && <div className="hub-account-menu"><button onClick={()=>{account.setOpen(false);editProfile()}}><UserRound size={15}/>Perfil</button><SoundToggle size={15}/><button onClick={logout}><LogOut size={15}/>Sair</button></div>}
@@ -367,11 +455,13 @@ export default function ServerHub({ servers, ownerId, onDelete, onLeave, returni
     <div ref={hand} className="deck-hand" inert={step!=='idle'} style={{'--gaps':Math.max(1,cards.length-1)}}>
       {cards.map((server,i)=><button key={server?.id ?? 'add'} data-server={server?.id} aria-label={server?.name ?? 'Adicionar servidor'}
         className={'deck-card'+(server?'':' deck-add')} data-drawn={draw && draw.id===(server?.id ?? null) ? true : undefined} data-z={cards.length-i} style={{'--d':i-(cards.length-1)/2,'--abs':Math.abs(i-(cards.length-1)/2),'--z':cards.length-i}}
+        data-live={server && activity?.[server.id]?.live ? '' : undefined}
+        onPointerEnter={()=>focusCard(server)} onPointerLeave={()=>focusCard(undefined)} onFocus={()=>focusCard(server)} onBlur={()=>focusCard(undefined)}
         onPointerDown={e=>begin(e,server)}
         onLostPointerCapture={e=>release(e,server,true)} onClick={e=>{
           if(skipClick.current && e.detail!==0){skipClick.current=false;return}
           if(!held.current)fly(server,e.currentTarget,true)
-        }}><Face server={server}/></button>)}
+        }}><Face server={server} live={!!(server && activity?.[server.id]?.live)}/></button>)}
     </div>
     <div ref={trash} className="deck-trash" data-mode="delete" aria-label="Segure por 1,5 segundo para apagar">
       <Trash2 className="bin-delete" size={21}/><DoorOpen className="bin-leave" size={21}/></div>

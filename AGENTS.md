@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-21, versao 1.12.2 (app sem comportamento de site, foco das cartas sem tremer).
+Ultima atualizacao: 2026-11-21, versao 1.13.0 (campo ASCII, foto em ASCII e radar no deck).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -242,6 +242,32 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.13.0 — campo ASCII, foto em ASCII e radar no deck (2026-11-21):
+- `src/lib/asciiField.js`: canvas atras do deck com grade de caracteres (` .·:-=+*#`, celulas 12x14). Lente e rastro do
+  mouse, onda ao tocar o fundo e ao entrar no servidor, fluxo + vaga desenhada em caracteres ao arrastar uma carta,
+  caracteres que embaralham e somem na lixeira, marca VISOR respirando no centro e iniciais da carta em foco (scramble).
+  Custo no DeckLab a 1920x1080 (tempo de JS): 2,8% de um nucleo parado (12 fps), 5,6% com o mouse (30 fps); a textura
+  fica numa camada atualizada so nas celulas que mudam. Para sem foco, com a aba oculta e durante a propria
+  transmissao (`call.live`); reduced motion = estatico (nao verificado).
+- Foto do servidor em ASCII (`photoMask`): um pixel por celula, luminancia com contraste entre os percentis 5 e 95,
+  quadrado arredondado como contorno; tamanho = espaco livre entre o topo e o deck (18 linhas numa janela pequena,
+  ~28 em 1080p). Cache por URL+tamanho e pre-carga das fotos. O bucket `avatars` responde `Access-Control-Allow-Origin: *`
+  (pixels legiveis); foto real lida em 277 ms com rede. Sem foto ou falha = iniciais. `serverInitials` (ui.jsx) ignora
+  espacos e nao corta emoji ao meio (tambem na carta).
+- Radar (`src/lib/radar.js`): com o deck aberto, ouve sem publicar a presenca `calls:<id>` de todos os servidores e
+  passa `activity` ({ people, live }) ao ServerHub: ponto ao vivo na carta, anel lento a cada 2,4 s e contagens acima
+  da foto/iniciais. A propria instancia nao conta.
+- `src/lib/topics.js`: canais `calls:<servidor>` compartilhados (diretorio da call, tabuleiro e radar). Motivo: o
+  realtime-js 2.119 devolve o MESMO canal para o mesmo topico; fechar e abrir o topico no mesmo commit entregava um
+  canal saindo, cujo `subscribe()` nao faz nada (ja podia ocorrer ao entrar numa call de outro servidor com uma call
+  ativa). Agora: um canal por topico, fecha 1,5 s apos o ultimo usuario, reabre 3 s apos CLOSED/erro e reenvia
+  'SUBSCRIBED' + estado a quem entra. Quem faz `track` faz `untrack` ao sair (o canal pode seguir aberto).
+  `window.__topics` em dev.
+- QA com duas contas temporarias no Supabase real (localhost e [::1], apagadas no fim): B na mesa -> deck de A com
+  { people: 1, live: 0 }; B transmitindo (track de canvas via `window.__room.startShare`) -> live 1, carta com ponto;
+  deck -> servidor -> deck sem recarregar reaproveita o canal (1 topico, 1 usuario). Nao verificado: reabertura apos
+  CLOSED real, Electron instalado, GPU durante jogo, reduced motion. DeckLab: `#/deck-teste` (amigos tem foto gerada).
 
 1.12.2 — app sem comportamento de site e foco das cartas estavel (2026-11-21):
 - `body` com `user-select:none` e `-webkit-user-drag:none`; so campos e o texto das mensagens (`.msg-main p`)

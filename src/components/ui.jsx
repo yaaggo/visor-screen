@@ -170,10 +170,16 @@ export function usePopover() {
   return { open, setOpen, ref }
 }
 
+// URL da foto do servidor (photo_url so existe nos labs, com imagem gerada localmente).
+export const serverPhotoUrl = server => server.photo_url ?? (server.photo_revision ? supabase.storage.from('avatars')
+  .getPublicUrl('servers/' + server.id + '.webp').data.publicUrl + '?v=' + server.photo_revision : null)
+
+// Duas primeiras letras do nome sem espacos, por caractere completo (nao corta emoji ao meio).
+export const serverInitials = name => Array.from(name.replace(/\s+/g, '')).slice(0, 2).join('') || '?'
+
 export function ServerFace({server}) {
-  const url = server.photo_revision && supabase.storage.from('avatars')
-    .getPublicUrl('servers/' + server.id + '.webp').data.publicUrl + '?v=' + server.photo_revision
+  const url = serverPhotoUrl(server)
   const [failed, setFailed] = useState(null)
   return url && url !== failed ? <img className="server-photo" alt="" draggable={false} src={url} onError={() => setFailed(url)}/>
-    : server.name.slice(0,2)
+    : serverInitials(server.name)
 }
