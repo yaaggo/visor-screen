@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-21, versao 1.15.1 (replay F9 com um codificador so, clipes em MP4).
+Ultima atualizacao: 2026-11-21, versao 1.16.0 (link da sala: entra no servidor e abre a transmissao de quem mandou).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -252,7 +252,7 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 
 ## Estado atual
 
-Nao publicado (commit local, sem push, pedido do usuario) — link da sala (2026-11-21):
+1.16.0 — link da sala (2026-11-21):
 - Botao de link (icone Link2, `CopyButton` com `icon`) no cabecalho da sala copia
   `<origem>/#/j/<codigo de convite>/<canal>/<perfil de quem copiou>`. No app desktop (file://) a origem e
   https://visor-screen.vercel.app/ (`roomLink` em route.js); no dev, a do Vite.
