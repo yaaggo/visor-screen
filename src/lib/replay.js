@@ -1,13 +1,116 @@
 // Replay de quem transmite: guarda os ultimos segundos da propria transmissao para salvar com F9.
-// Um WebM so pode ser cortado no comeco se tiver o cabecalho e comecar num quadro-chave, entao em vez de
-// cortar, dois gravadores se revezam: cada um reinicia a cada 2x a duracao, defasados de 1x. Sempre ha um
-// com pelo menos `seconds` gravados; o clipe salvo tem entre `seconds` e 2x `seconds`, e e um arquivo valido.
-// Gravar usa o codificador do navegador (H264 em hardware quando disponivel), por isso e opcional.
+//
+// Caminho principal (WebCodecs, replayWorker.js): UM codificador H264 em hardware, num worker, com quadro-chave a
+// cada 2 s e uma fila dos ultimos segundos ja codificados. F9 monta um MP4 a partir do quadro-chave certo: o clipe
+// tem a duracao pedida (ate 2 s a mais), com duracao e busca corretas, e o arquivo vai ao disco com uma copia so.
+//
+// Reserva (MediaRecorder): sem WebCodecs/H264, dois gravadores se revezam (um WebM so pode comecar no cabecalho e
+// num quadro-chave): cada um reinicia a cada 2x a duracao, defasados de 1x. Custa dois codificadores.
+import { even, videoConfig } from './replayConfig.js'
 
 const TYPES = ['video/webm;codecs=h264,opus', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
-export const replaySupported = () => typeof MediaRecorder === 'function' && TYPES.some(t => MediaRecorder.isTypeSupported(t))
+const webcodecs = () => typeof VideoEncoder === 'function' && typeof AudioEncoder === 'function' &&
+  typeof MediaStreamTrackProcessor === 'function' && typeof OffscreenCanvas === 'function'
+export const replaySupported = () => webcodecs() || (typeof MediaRecorder === 'function' && TYPES.some(t => MediaRecorder.isTypeSupported(t)))
 
+// Mesma interface nos dois caminhos: start(), addTrack(track), save() -> { data, ext, duration, thumb }, stop().
 export class ReplayBuffer {
+  // fps: o do preset (a track do motor Rust nao informa frameRate).
+  constructor(stream, { seconds = 30, bitrate = 8_000_000, fps } = {}) {
+    this.stream = stream
+    this.opts = { seconds, bitrate, fps }
+    this.closed = false
+    this.kind = null
+    this.pending = new Map()
+    this.seq = 0
+    this.clones = []
+  }
+
+  start() {
+    this.ready = this.init().catch(() => this.fallback())
+    return this
+  }
+
+  async init() {
+    const [track] = this.stream.getVideoTracks()
+    if (!track || !webcodecs()) return this.fallback()
+    const s = track.getSettings()
+    const fps = Math.round(Math.min(60, Math.max(15, this.opts.fps || s.frameRate || 30)))
+    const config = videoConfig(even(s.width || 1920), even(s.height || 1080), fps, this.opts.bitrate)
+    const { supported } = await VideoEncoder.isConfigSupported(config)
+    if (this.closed) return
+    if (!supported) return this.fallback()
+    // Worker em blob (funciona em file:// no app instalado), carregado so quando o replay liga.
+    const { default: ReplayWorker } = await import('./replayWorker.js?worker&inline')
+    if (this.closed) return
+    this.kind = 'webcodecs'
+    this.worker = new ReplayWorker()
+    this.worker.onmessage = ({ data }) => { this.pending.get(data.id)?.(data); this.pending.delete(data.id) }
+    // A leitura dos quadros usa uma copia da track (parar o replay nao encerra a transmissao).
+    const video = this.read(track)
+    const [mic] = this.stream.getAudioTracks()
+    const audio = mic ? this.read(mic) : null
+    this.worker.postMessage({ type: 'start', seconds: this.opts.seconds, bitrate: this.opts.bitrate, fps, video, audio }, [video, audio].filter(Boolean))
+  }
+
+  read(track) {
+    const clone = track.clone()
+    this.clones.push(clone)
+    return new MediaStreamTrackProcessor({ track: clone }).readable
+  }
+
+  fallback() {
+    if (this.closed || this.legacy) return
+    this.worker?.terminate()
+    this.worker = null
+    this.kind = 'mediarecorder'
+    this.legacy = new MediaRecorderReplay(this.stream, this.opts).start()
+  }
+
+  request(type) {
+    if (!this.worker) return Promise.resolve({})
+    const id = ++this.seq
+    return new Promise(resolve => { this.pending.set(id, resolve); this.worker.postMessage({ type, id }) })
+  }
+
+  // O audio do sistema (replay no Mudo) chega depois do video.
+  async addTrack(track) {
+    await this.ready
+    if (this.closed) return
+    this.stream = new MediaStream([...this.stream.getTracks(), track])
+    if (this.legacy) return this.legacy.addTrack(track)
+    const audio = this.read(track)
+    this.worker?.postMessage({ type: 'audio', audio }, [audio])
+  }
+
+  async save() {
+    await this.ready
+    if (this.legacy) return this.legacy.save()
+    const { clip } = await this.request('save')
+    return clip ?? null
+  }
+
+  async stats() {
+    await this.ready
+    return this.legacy ? null : (await this.request('stats')).stats ?? null
+  }
+
+  stop() {
+    this.closed = true
+    this.legacy?.stop()
+    this.worker?.postMessage({ type: 'stop' })
+    const worker = this.worker
+    // Da tempo ao worker de fechar os codificadores antes de encerrar.
+    if (worker) setTimeout(() => worker.terminate(), 1000)
+    this.worker = null
+    for (const clone of this.clones) clone.stop()
+    this.clones = []
+    for (const resolve of this.pending.values()) resolve({})
+    this.pending.clear()
+  }
+}
+
+export class MediaRecorderReplay {
   constructor(stream, { seconds = 30, bitrate = 8_000_000 } = {}) {
     this.stream = stream
     this.seconds = seconds
@@ -28,7 +131,7 @@ export class ReplayBuffer {
     return this
   }
 
-  // Uma track nova (o audio do sistema chega depois do video) so entra em gravadores novos: recomeca os dois.
+  // Uma track nova so entra em gravadores novos: recomeca os dois.
   addTrack(track) {
     if (this.closed) return
     this.stream = new MediaStream([...this.stream.getTracks(), track])
@@ -60,11 +163,11 @@ export class ReplayBuffer {
     const rec = this.recorders[index]
     const duration = (performance.now() - rec.at) / 1000
     this.recorders[index] = this.spawn()
-    const blob = await new Promise(resolve => {
+    const [blob, thumb] = await Promise.all([new Promise(resolve => {
       rec.media.onstop = () => resolve(new Blob(rec.chunks, { type: this.type.split(';')[0] }))
       rec.media.stop()
-    })
-    return { blob, duration: Math.round(duration) }
+    }), this.thumbnail()])
+    return { data: await blob.arrayBuffer(), ext: 'webm', duration: Math.round(duration), thumb }
   }
 
   // Miniatura do momento do F9 (quadro atual da track de video), em JPEG pequeno.

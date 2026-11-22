@@ -131,7 +131,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
     if (!replayOn) return
     let mixer = null, closed = false
     const source = replayOwnAudio ? new MediaStream(s.local.getVideoTracks()) : s.local
-    const buffer = new ReplayBuffer(source, { seconds: cfg.replay }).start()
+    const buffer = new ReplayBuffer(source, { seconds: cfg.replay, fps: getPreset(cfg.presetId).fps }).start()
     if (replayOwnAudio) window.visor.audioSupported().then(ok => {
       if (!ok || closed) return
       mixer = new AppAudioMixer(1)
@@ -143,10 +143,9 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
       if (saving) return
       saving = true
       try {
-        const [thumb, clip] = await Promise.all([buffer.thumbnail(), buffer.save()])
-        if (!clip?.blob.size) return
-        const data = new Uint8Array(await clip.blob.arrayBuffer())
-        const saved = await window.visor.clips.save({ data, thumb, ext: 'webm', meta: { duration: clip.duration, source: channel.name } })
+        const clip = await buffer.save()
+        if (!clip?.data?.byteLength) return
+        const saved = await window.visor.clips.save({ data: clip.data, thumb: clip.thumb, ext: clip.ext, meta: { duration: clip.duration, source: channel.name } })
         if (!saved) return
         play('chime')
         clearTimeout(hide)

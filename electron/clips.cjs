@@ -23,8 +23,11 @@ function setupClips(getWindow) {
     let base = 'Visor ' + stamp(new Date()), n = 1
     while (fs.existsSync(inFolder(base + '.webm')) || fs.existsSync(inFolder(base + '.mp4'))) base = 'Visor ' + stamp(new Date()) + ' (' + ++n + ')'
     const file = base + (ext === 'mp4' ? '.mp4' : '.webm')
-    await fs.promises.writeFile(inFolder(file), Buffer.from(data))
-    if (typeof thumb === 'string' && thumb.startsWith('data:image/jpeg;base64,'))
+    // Buffer sobre a mesma memoria (sem outra copia do clipe).
+    const view = d => d instanceof ArrayBuffer ? Buffer.from(d) : Buffer.from(d.buffer, d.byteOffset, d.byteLength)
+    await fs.promises.writeFile(inFolder(file), view(data))
+    if (thumb instanceof Uint8Array || thumb instanceof ArrayBuffer) await fs.promises.writeFile(inFolder(base + '.jpg'), view(thumb))
+    else if (typeof thumb === 'string' && thumb.startsWith('data:image/jpeg;base64,'))
       await fs.promises.writeFile(inFolder(base + '.jpg'), Buffer.from(thumb.slice(23), 'base64'))
     await fs.promises.writeFile(inFolder(base + '.json'), JSON.stringify({ ...(meta ?? {}), createdAt: Date.now() }))
     return { name: file }
