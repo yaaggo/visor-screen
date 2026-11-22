@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-21, versao 1.15.0 (miniplayer arrastavel para fora do app, mesa de clipes, corpos celestes, campo ASCII nas salas).
+Ultima atualizacao: 2026-11-21, versao 1.15.1 (replay F9 com um codificador so, clipes em MP4).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -59,7 +59,7 @@ src/
   lib/sources.js   captureWeb / captureDesktop / captureDevice / listDevices / matchAudio
   lib/nativeCapture.js   recebe VideoFrame do preload e monta uma track WebRTC
   lib/appAudio.js  AppAudioMixer: AudioWorklet por app -> MediaStreamDestination (1 track)
-  lib/replay.js    ReplayBuffer: dois MediaRecorder defasados para o F9
+  lib/replay.js    ReplayBuffer do F9: WebCodecs num worker (replayWorker.js, mediabunny -> MP4); reserva: dois MediaRecorder
   lib/asciiField.js, lib/radar.js, lib/topics.js   campo ASCII do deck, radar de presenca, canais calls:<id> compartilhados
   lib/useAsciiField.js   campo ASCII de fundo (tabuleiro; light nas salas)
   lib/celestial.js       capa dos servidores sem foto (8 SVG em src/assets/celestial, gerados por scripts/celestial.mjs)
@@ -251,6 +251,35 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.15.1 — replay F9 com um codificador so (2026-11-21):
+- Antes: dois MediaRecorder codificavam a captura inteira o tempo todo (WebM so comeca no cabecalho e num quadro-chave).
+  Agora `ReplayBuffer` (src/lib/replay.js) le a track por `MediaStreamTrackProcessor` (copia da track) e manda os
+  quadros a `replayWorker.js` (worker inline em blob, carregado so quando o replay liga): um `VideoEncoder` H264
+  `prefer-hardware`, quadro-chave a cada 2 s, fila dos ultimos `seconds` ja codificados (memoria ~ bitrate x (N+2) s).
+  F9 monta um MP4 (mediabunny 1.65.2, `fastStart: 'in-memory'`) a partir do quadro-chave certo, sem recodificar:
+  clipe de N a N+2 s, duracao e busca corretas, audio AAC (Opus se nao houver AAC). O ArrayBuffer volta do worker por
+  transferencia e `clips.cjs` grava com Buffer sobre a mesma memoria; miniatura JPEG feita no worker (OffscreenCanvas).
+  Sem WebCodecs/H264 (ou acima de 1920x1088, que o encoder de hardware do Chromium recusa) cai no MediaRecorder antigo.
+- Relogio (descoberto medindo): o `AudioEncoder` do Chromium so usa o timestamp do PRIMEIRO AudioData e depois conta
+  amostras; os primeiros AudioData do processor vem noutra base e os seguintes ja vem no relogio do worker. Por isso o
+  worker guarda "amostra -> tempo de captura" na entrada e da o tempo de cada pacote por ele; track que para de
+  entregar dados (salto nos timestamps) recebe silencio codificado. O video usa o timestamp de captura (relogio do
+  sistema) com base = menor (chegada - timestamp) dos primeiros 2 s, depois fixa; o quadro vai ao encoder ja com o
+  tempo final (`new VideoFrame(frame, { timestamp })`, sem copia). Nao passe `frameRate` ao muxer: ele arredonda os
+  tempos para 1/fps (com a track do Rust, que nao informa fps, metade dos quadros a 60 fps saia no mesmo instante).
+- Medido (cena release/qa-1080 --detail em tela cheia, 1080p60 H264 NVIDIA a 12 Mbps, espectadores WebRTC locais,
+  replay de 12 s para os dois gravadores antigos estarem ativos; dados em release/qa-replay/):
+  1 espectador: encoder NVIDIA 10,6% sem replay, 25,2% antigo, 17,3% novo; ms por quadro 7,7 / 10,6 / 8,2;
+  CPU 80% / 141% / 115% de um nucleo. 3 espectadores: envio 46,2 / 41-42 / 43,5-43,8 fps; ms por quadro
+  10,5 / 15,6-16,0 / 11,5-12,0; encoder 22% / 34% / 29%. Montar o MP4 de 30 s: 70-80 ms no worker; IPC + disco ~130 ms.
+- Sincronia (pisca branco + bipe no mesmo quadro, captura da tela): video 28-44 ms depois do audio, estavel no clipe
+  todo; o MediaRecorder deu 2-24 ms no mesmo teste. Diferenca vem da base do video por chegada (os relogios de video e
+  audio do processor nao tem conversao exposta). No app real o audio passa por helper + IPC + worklet, que o atrasa.
+- QA no app (Electron dev, conta temporaria apagada): motor Rust, audio Tudo e Mudo, F9 real do Windows: MP4 de
+  30,7 s a 59 fps (intervalos de 16,7 ms), AAC com som, miniatura, aviso "Clip salvo", tocou na pagina de clipes.
+  Build de producao em file:// (dist via Electron): o worker inline carregou e devolveu MP4 H264+AAC com miniatura.
+  Nao verificado: placa de captura, GPU AMD/Intel, jogo real em tela cheia, F9 no app instalado.
 
 1.15.0 — miniplayer, mesa de clipes, corpos celestes e campo ASCII nas salas (2026-11-21). Um commit por recurso:
 - Replay: transmitindo no Mudo (ou dispositivo sem audio), o clipe grava o som do sistema menos o Visor num
