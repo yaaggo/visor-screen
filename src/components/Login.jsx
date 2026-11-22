@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
-import { ArrowRight, Check, LoaderCircle } from 'lucide-react'
+import { ArrowRight, Check, Link2, LoaderCircle } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { Scramble } from './ui.jsx'
+import { pendingJoin } from '../lib/route.js'
 
 const VALID = /^[a-zA-Z0-9_.-]{2,20}$/
 const PIN_MAX = 4
@@ -14,6 +15,8 @@ const passwordFor = (pin) => `visor-pin:${pin}`
 export default function Login({ onReady }) {
   const [name, setName] = useState('')
   const [pin, setPin] = useState('')
+  // Veio por um link de sala: depois de entrar (ou criar a conta) o app abre a sala sozinho.
+  const [invite] = useState(() => !!pendingJoin())
   const [phase, setPhase] = useState('idle') // idle | busy | done | error
   const [error, setError] = useState('')
   const pinRef = useRef(null)
@@ -64,6 +67,7 @@ export default function Login({ onReady }) {
         <div className="brand">
           <span className="brand-mark" aria-hidden />
           <Scramble text="visor" className="brand-name" />
+          {invite && <span className="login-invite" data-tip="Link de sala" aria-label="Link de sala"><Link2 size={13} strokeWidth={2}/>sala</span>}
         </div>
         <label className={`field login-name ${name ? 'has-value' : ''} ${error ? 'has-error' : ''}`}>
           <span className="field-label">{error || 'usuario'}</span>

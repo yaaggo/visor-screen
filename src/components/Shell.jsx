@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowRight, MoreHorizontal, Pencil, Cast, ImagePlus, LogOut, MessageSquare, Monitor, Plus, PhoneOff, Radio, Smartphone, Trash2, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { ArrowRight, MoreHorizontal, Pencil, Cast, ImagePlus, Link2, TriangleAlert, LogOut, MessageSquare, Monitor, Plus, PhoneOff, Radio, Smartphone, Trash2, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import SoundToggle from './SoundToggle.jsx'
 import ServerBoard from './ServerBoard.jsx'
 import { play } from '../lib/sound.js'
 import { supabase } from '../lib/supabase.js'
 import { deviceKind, endpointId, presencePublisher } from '../lib/presence.js'
-import { go, useRoute } from '../lib/route.js'
+import { go, replaceRoute, roomLink, useRoute } from '../lib/route.js'
 import { useRadar } from '../lib/radar.js'
 import { acquireTopic, presenceList } from '../lib/topics.js'
 import { Avatar, CopyButton, IconButton, ServerFace, usePopover } from './ui.jsx'
@@ -99,7 +100,7 @@ function coverFlight(move, item) {
 }
 
 export default function Shell({ profile }) {
-  const { serverId, channelId, clips } = useRoute()
+  const { serverId, channelId, clips, join } = useRoute()
   const [servers, setServers] = useLive('servers', null, 'created_at', [])
   const [channels, setChannels] = useLive('channels', serverId ? ['server_id', serverId] : false, 'created_at', [serverId])
   const [collapsed, setCollapsed] = useState(false)
@@ -298,6 +299,28 @@ export default function Shell({ profile }) {
     return row
   }
 
+  // Link da sala (#/j/<convite>/<canal>): entra no servidor pelo codigo (ja sendo membro, so confirma) e abre a sala,
+  // o que ja entra na call. Espera a lista de servidores carregar (senao a lista inicial apagaria o servidor novo).
+  const joining = useRef(null)
+  const [joinFailed, setJoinFailed] = useState(0)
+  // Chegada pelo link: a sala coloca na mesa a transmissao de quem mandou (ou a primeira ao vivo).
+  const [arrival, setArrival] = useState(null)
+  useEffect(() => {
+    if (!join || !servers) return
+    const key = join.code + '/' + join.channelId
+    if (joining.current === key) return
+    joining.current = key
+    submitServer('join', join.code)
+      .then(row => { if (join.channelId) setArrival({ channelId: join.channelId, from: join.from, at: Date.now() }); replaceRoute(row.id, join.channelId) })
+      .catch(() => { setJoinFailed(Date.now()); play('fail'); replaceRoute(null) })
+      .finally(() => { joining.current = null })
+  }, [join, !!servers])
+  useEffect(() => {
+    if (!joinFailed) return
+    const t = setTimeout(() => setJoinFailed(0), 2800)
+    return () => clearTimeout(t)
+  }, [joinFailed])
+
   const createChannel = async (name) => {
     const { data, error } = await supabase.from('channels').insert({ server_id: serverId, name, kind:'screen' }).select().single()
     if (error) return false
@@ -424,11 +447,14 @@ export default function Shell({ profile }) {
               <span>{channel.name}</span>
             </div>
           )}
+          {server.invite_code && <CopyButton text={roomLink(server.invite_code, channel.id, profile.id)} label="Link da sala" icon={Link2}/>}
           <div id="call-head-slot" className="head-slot"/>
         </header>}
         <div className="main-body">
+          {join && <div className="boot"><span className="boot-dot"/></div>}
+          {joinFailed > 0 && createPortal(<div className="clip-toast join-fail" role="status" key={joinFailed}><TriangleAlert size={14} strokeWidth={2}/>Convite inválido</div>, document.body)}
           {!serverId && clips && window.visor?.clips && <ClipsPage onBack={() => go(null)}/>}
-          {!serverId && !(clips && window.visor?.clips) && servers && <ServerHub call={call ? { server:servers.find(s => s.id === call.server_id), name:call.name, connected,
+          {!serverId && !join && !(clips && window.visor?.clips) && servers && <ServerHub call={call ? { server:servers.find(s => s.id === call.server_id), name:call.name, connected,
               live:visitors.some(v => (v.endpointId ?? v.id) === endpointId && v.channel === call.id && v.sharing) } : null}
             onResume={node => { const row = servers.find(s => s.id === call?.server_id); if (row) openServer(row, node) }} onHangup={disconnect}
             activity={radar} ownerId={profile.id} onDelete={deleteServer} onLeave={leaveServer} returningId={origin.current?.id} servers={servers} onSubmit={submitServer} onOpen={openServer} editProfile={() => setEditing(true)} logout={logout}/>}
@@ -445,7 +471,8 @@ export default function Shell({ profile }) {
             onCreate={createChannel} onDelete={deleteChannel}/>}
           {call && <div className="call-session" hidden={!callVisible}>
             <ScreenChannel key={call.id} channel={call} profile={profile} chatChannel={call} visible={callVisible} onUnread={setUnread}
-              onConnection={setConnected} reportMember={reportMember} visitors={visitors.filter(v => v.channel === call.id)} photo={photo}/>
+              onConnection={setConnected} reportMember={reportMember} visitors={visitors.filter(v => v.channel === call.id)} photo={photo}
+              arrival={arrival?.channelId === call.id ? arrival : null} onArrived={() => setArrival(null)}/>
           </div>}
         </div>
       </main>

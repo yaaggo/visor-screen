@@ -52,7 +52,7 @@ src/
   App.jsx          gate de auth (valida sessao com getUser; sessao invalida e descartada)
   styles.css       todo o visual/motion; .is-desktop aplica regioes de arrastar da janela
   lib/env.js       desktop? (window.visor) e API_BASE (absoluto quando file://)
-  lib/supabase.js, lib/route.js
+  lib/supabase.js, lib/route.js   (route.js: rotas por hash, link da sala #/j/<convite>/<canal>/<perfil>)
   lib/quality.js   presets, BITRATES, tuneSender(), mungeAnswer() (SDP: x-google-*, Opus estereo 256k)
   lib/screen.js    ScreenRoom: presenca, sinalizacao, peers, coleta de stats
   lib/screenStats.js   metricas de captura, codificacao, envio, recepcao e ICE a partir de getStats()
@@ -251,6 +251,24 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+Nao publicado (commit local, sem push, pedido do usuario) — link da sala (2026-11-21):
+- Botao de link (icone Link2, `CopyButton` com `icon`) no cabecalho da sala copia
+  `<origem>/#/j/<codigo de convite>/<canal>/<perfil de quem copiou>`. No app desktop (file://) a origem e
+  https://visor-screen.vercel.app/ (`roomLink` em route.js); no dev, a do Vite.
+- Abrir o link: sem sessao, o login mostra o selo "sala" e o hash fica ate entrar/criar a conta. Com sessao, o Shell
+  espera a lista de servidores (senao a lista inicial apagaria o servidor recem-entrado), chama `join_server(code)`
+  (ja sendo membro so confirma), troca o endereco com `location.replace` para `#/s/<servidor>/<canal>` (o link nao
+  volta com "voltar") e abre a sala, que ja entra na call. A sala recebe `arrival` e poe na mesa a transmissao de quem
+  mandou o link; se a pessoa ainda nao esta no ar espera ate 30 s, e se outra pessoa ja transmite assiste essa apos 4 s.
+  Codigo invalido: volta ao deck com o aviso "Convite inválido" (portal no body, por cima da barra do deck).
+- QA (Vite dev, Electron + navegador do app, duas contas temporarias apagadas): copiar o link; B sem conta criou a
+  conta pelo link e caiu na sala; B logado abriu o link com A transmitindo e o video tocou na mesa (1920x1080); B
+  entrou antes e A comecou depois: assistiu sozinho; codigo invalido. Nao verificado: link aberto no celular, link
+  copiado no app instalado (origem web), canal apagado depois de copiar o link (deve abrir o tabuleiro).
+- Incidente no teste: A transmitia com audio Tudo e B (navegador do app, mesmo PC) tocava o som; a captura pegava o som
+  de B de novo e o Discord do usuario repetiu em loop. Em testes locais com duas contas, transmita no Mudo ou deixe o
+  espectador sem som.
 
 1.15.1 — replay F9 com um codificador so (2026-11-21):
 - Antes: dois MediaRecorder codificavam a captura inteira o tempo todo (WebM so comeca no cabecalho e num quadro-chave).

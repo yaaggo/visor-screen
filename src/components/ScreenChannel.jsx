@@ -47,10 +47,11 @@ function useAudioApps(enabled) {
   return apps
 }
 
-export default function ScreenChannel({ channel, profile, chatChannel, visitors = [], photo, reportMember, visible = true, onConnection, onUnread }) {
+export default function ScreenChannel({ channel, profile, chatChannel, visitors = [], photo, reportMember, visible = true, onConnection, onUnread, arrival, onArrived }) {
   const roomRef = useRef(null)
   const captureRef = useRef(null)
   const starting = useRef(false)
+  const [arrivalTick, setArrivalTick] = useState(0)
   const [s, setS] = useState({ peers: [], sharing: false, local: null, remote: null, watching: null, viewers: 0, preset: '1080p60', bitrate: 0, uplink: null, stats: null, remoteAudio: false })
   useEffect(() => { onConnection?.(Boolean(s.connected)) }, [s.connected, onConnection])
   useEffect(() => {
@@ -373,6 +374,28 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
     peerMap.set(key, prev ? { ...prev, ...p, id: key } : { ...p, id: key })
   }
   const allPeers = [...peerMap.values()]
+
+  // Chegou pelo link da sala: poe na mesa a transmissao de quem mandou o link. Se essa pessoa ainda nao esta no ar,
+  // espera ate 30 s; se outra pessoa ja esta transmitindo, assiste essa depois de 4 s (tempo da presenca chegar).
+  const liveKey = allPeers.filter(p => p.sharing && p.id !== endpointId).map(p => p.id + ':' + p.profileId).join(',')
+  useEffect(() => {
+    if (!arrival) return
+    const done = () => onArrived?.()
+    const live = allPeers.filter(p => p.sharing && p.id !== endpointId)
+    const age = Date.now() - arrival.at
+    const target = live.find(p => arrival.from && p.profileId === arrival.from) ?? (!arrival.from || age > 4000 ? live[0] : null)
+    if (target) {
+      placedAt.current.set(target.id, Date.now())
+      if (!roomRef.current.inputs.has(target.id) || roomRef.current.inputs.get(target.id).preview) roomRef.current.watch(target.id, false, target)
+      done()
+      return
+    }
+    // Reavalia quando a lista de quem transmite muda ou quando o prazo de 4 s / 30 s passa.
+    const wait = age < 4000 ? 4000 - age : 30000 - age
+    if (wait <= 0) { done(); return }
+    const t = setTimeout(() => { if (age >= 4000) done(); else setArrivalTick(n => n + 1) }, wait)
+    return () => clearTimeout(t)
+  }, [arrival, liveKey, arrivalTick])
 
 
   return (

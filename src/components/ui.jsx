@@ -64,7 +64,7 @@ export function Segmented({ value, onChange, options, size = 'md', label }) {
 }
 
 // Copiar com morph de icone (conceito "Copy button")
-export function CopyButton({ text, label = 'Copiar link' }) {
+export function CopyButton({ text, label = 'Copiar link', icon: Icon = Copy }) {
   const [done, setDone] = useState(false)
   useEffect(() => {
     if (!done) return
@@ -78,7 +78,7 @@ export function CopyButton({ text, label = 'Copiar link' }) {
       onClick={() => navigator.clipboard.writeText(text).then(() => setDone(true))}
     >
       <span className="swap">
-        <Copy size={16} strokeWidth={1.75} />
+        <Icon size={16} strokeWidth={1.75} />
         <Check size={16} strokeWidth={2} />
       </span>
     </IconButton>
