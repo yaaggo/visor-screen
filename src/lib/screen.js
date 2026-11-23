@@ -22,6 +22,7 @@ async function loadIce() {
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10)
+const GONE_MS = 15000
 
 export class ScreenRoom {
   constructor({ supabase, roomId, me, onChange }) {
@@ -41,6 +42,7 @@ export class ScreenRoom {
     this.uplink = null // menor availableOutgoingBitrate entre espectadores (bps)
     this.out = new Map() // viewerId -> RTCPeerConnection
     this.inputs = new Map()
+    this.gone = new Map() // viewerId -> timer: espectador fora da presenca, mas com conexao de envio aberta
     this.sendStats = null
     this.statsHistory = new WeakMap()
     this.pollingStats = false
@@ -170,9 +172,12 @@ export class ScreenRoom {
     const state = this.channel.presenceState()
     this.peers = Object.entries(state).map(([id, metas]) => ({ id, ...metas[metas.length - 1] }))
 
-    // viewers que sairam
-    for (const id of [...this.out.keys()]) {
-      if (!state[id]) this.closeOut(id)
+    // Espectador fora da presenca: o canal dele pode ter caido e estar reabrindo (o Supabase fecha o canal de quem
+    // estoura o limite de presenca). Fechar na hora deixava a tela dele parada sem novo pedido; espera GONE_MS.
+    // Saida pela interface manda 'unwatch' (fecha na hora) e conexao que falha fecha pelo connectionState.
+    for (const id of this.out.keys()) {
+      if (state[id]) this.forgive(id)
+      else if (!this.gone.has(id)) this.gone.set(id, setTimeout(() => this.expire(id), GONE_MS))
     }
 
     for (const input of this.inputs.values()) {
@@ -287,7 +292,23 @@ export class ScreenRoom {
     this.emit()
   }
 
+  forgive(viewerId) {
+    clearTimeout(this.gone.get(viewerId))
+    this.gone.delete(viewerId)
+  }
+
+  expire(viewerId) {
+    this.gone.delete(viewerId)
+    if (this.closed || !this.out.has(viewerId)) return
+    // Com o proprio canal reabrindo a presenca nao e confiavel: confere de novo depois.
+    if (this.channel?.state !== 'joined') return void this.gone.set(viewerId, setTimeout(() => this.expire(viewerId), 5000))
+    if (viewerId in this.channel.presenceState()) return
+    this.closeOut(viewerId)
+    this.emit()
+  }
+
   closeOut(viewerId) {
+    this.forgive(viewerId)
     const pc = this.out.get(viewerId)
     if (!pc) return
     pc.onconnectionstatechange = null

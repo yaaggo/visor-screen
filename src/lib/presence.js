@@ -24,10 +24,12 @@ export const deviceKind = detectDeviceKind()
 // atualizacoes rapido demais tem o canal FECHADO pelo servidor (ClientPresenceRateLimitReached).
 // - agrupa rajadas (varios refresh seguidos viram um track)
 // - ignora estado identico ao ultimo confirmado, enquanto a propria presenca estiver no canal
-// - no maximo MAX_TRACKS por janela; o excedente espera a janela liberar
+// - no maximo MAX_TRACKS em qualquer janela de WINDOW_MS; o excedente espera a janela liberar
 // - repete apos falha e confere a cada 10 s se a propria presenca sumiu
-const WINDOW_MS = 10000
-const MAX_TRACKS = 5
+// Limite do servidor (supabase/realtime, CLIENT_PRESENCE_MAX_CALLS/WINDOW_MS): 5 eventos (track e untrack,
+// mesmo repetidos) a cada 30 s POR CANAL; o 6o fecha o canal. Ficamos em 4 para ter folga.
+const WINDOW_MS = 30000
+const MAX_TRACKS = 4
 const GROUP_MS = 250
 
 export function presencePublisher(publish, { snapshot = () => null, present = () => true } = {}) {
@@ -61,11 +63,14 @@ export function presencePublisher(publish, { snapshot = () => null, present = ()
     else if (typeof status === 'string' && status !== 'ok') schedule(3000)
   }
   const refresh = () => { confirmed = undefined; schedule() }
-  const visible = () => { if (document.visibilityState === 'visible') refresh() }
+  // Voltar para a aba/rede so publica se o estado mudou ou a propria presenca sumiu (run confere os dois).
+  // Antes forcava um track a cada alt-tab, e alternar entre o jogo e o Visor estourava o limite.
+  const check = () => schedule()
+  const visible = () => { if (document.visibilityState === 'visible') check() }
   const heal = setInterval(() => { if (present() === false) refresh() }, 10000)
   document.addEventListener('visibilitychange', visible)
-  window.addEventListener('online', refresh)
-  window.addEventListener('pageshow', refresh)
+  window.addEventListener('online', check)
+  window.addEventListener('pageshow', check)
   return {
     refresh: () => schedule(),
     // Depois de reabrir o canal o servidor nao tem mais o estado: forca o envio.
@@ -75,8 +80,8 @@ export function presencePublisher(publish, { snapshot = () => null, present = ()
       clearTimeout(timer)
       clearInterval(heal)
       document.removeEventListener('visibilitychange', visible)
-      window.removeEventListener('online', refresh)
-      window.removeEventListener('pageshow', refresh)
+      window.removeEventListener('online', check)
+      window.removeEventListener('pageshow', check)
     },
   }
 }

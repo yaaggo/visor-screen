@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-21, versao 1.16.0 (link da sala: entra no servidor e abre a transmissao de quem mandou).
+Ultima atualizacao: 2026-11-22, versao 1.16.1 (limite de presenca do Supabase: 4 tracks/30 s por canal; espectador que some tem 15 s).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -251,6 +251,25 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.16.1 — transmissoes que sumiam com 3 pessoas na sala (2026-11-22):
+- Relato: com 3 pessoas (2 na web, 1 no desktop), duas deixaram de ver a tela uma da outra e so viam a do terceiro.
+  Logs do Realtime: `ClientPresenceRateLimitReached` nas contas yago e de um amigo (20:05, 20:20, 20:34 BRT), cada vez
+  fechando `screen:` e `calls:` do mesmo cliente.
+- Limite real (codigo do supabase/realtime, `CLIENT_PRESENCE_MAX_CALLS=5`, `CLIENT_PRESENCE_WINDOW_MS=30000`): 5 eventos
+  de presenca por canal a cada 30 s, janela fixa a partir do primeiro; conta track e untrack, ate track identico. O 6o fecha
+  o canal. Medido neste projeto (topico publico temporario): tracks 1-5 ok, o 6o deu timeout e o canal fechou.
+  O `presencePublisher` da 1.7.2 deixava 5 a cada 10 s e forcava um track a cada `visibilitychange`/`online`/`pageshow`
+  (alt-tab entre jogo e Visor). Agora: no maximo 4 em qualquer janela de 30 s, e voltar para a aba so publica se o estado
+  mudou ou a presenca sumiu. Mesma carga (12 mudancas + 10 voltas para a aba em ~40 s): antigo 11 tracks, 7 em 30 s, canal
+  fechado; novo 5 tracks, 4 em 30 s, canal aberto e ultimo estado no servidor. Custo: rajadas de mudancas (quem assiste,
+  qualidade) chegam aos outros com atraso de ate ~30 s. O pedido de video nao depende da presenca.
+- Por que so algumas telas sumiam: o canal caido tira a pessoa da presenca; quem transmitia para ela fechava a conexao na hora
+  (`onPresence` -> `closeOut`). Ao voltar, o lado dela ainda tinha o `input` e nao pedia de novo: imagem parada ate o ICE falhar.
+  Agora o transmissor espera 15 s (`GONE_MS`, rechecando a cada 5 s enquanto o proprio canal reabre) antes de fechar; saida
+  pela interface manda `unwatch` e fecha na hora. Teste com canal simulado: volta em 4 s mantem, saida real fecha (~20 s),
+  sumico durante a propria reconexao mantem.
+- Nao verificado: tres pessoas reais, WebRTC real atravessando a queda e reabertura do canal.
 
 1.16.0 — link da sala (2026-11-21):
 - Botao de link (icone Link2, `CopyButton` com `icon`) no cabecalho da sala copia
