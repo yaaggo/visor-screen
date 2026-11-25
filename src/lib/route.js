@@ -12,9 +12,6 @@ function parse() {
   return { serverId: null, channelId: null, clips: kind === 'clips' }
 }
 
-// Convite pendente no endereco (vale antes do login: a tela de entrada mostra que e um convite).
-export const pendingJoin = () => parse().join ?? null
-
 export function useRoute() {
   const [route, setRoute] = useState(parse)
   useEffect(() => {

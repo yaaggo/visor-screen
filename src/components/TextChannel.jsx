@@ -1,6 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ArrowUp, X } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
+import { applyRowEvent, createLiveRows } from '../lib/liveRows.js'
 import { Avatar } from './ui.jsx'
 import { play } from '../lib/sound.js'
 
@@ -9,43 +10,53 @@ const time = (iso) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', mi
 
 export default function TextChannel({ channel, profile, compact = false }) {
   const [messages, setMessages] = useState(null)
+  const [sending, setSending] = useState([])
+  const [deleteErrors, setDeleteErrors] = useState([])
+  const feedRef = useRef(null)
+  const writes = useRef(new Map())
   const [draft, setDraft] = useState('')
   const listRef = useRef(null)
   const stick = useRef(true)
 
   useEffect(() => {
-    let alive = true
-    supabase
-      .from('messages')
-      .select('id, author_id, author_name, body, created_at')
-      .eq('channel_id', channel.id)
-      .order('created_at', { ascending: false })
-      .limit(PAGE)
-      .then(({ data }) => alive && setMessages((data ?? []).reverse()))
-
+    const feed = createLiveRows(() => supabase.from('messages')
+      .select('id, author_id, author_name, body, created_at').eq('channel_id', channel.id)
+      .order('created_at', { ascending: false }).limit(PAGE), setMessages, [])
+    feedRef.current = feed
+    feed.load()
+    const apply = event => {
+      const row = event.new
+      const batch = event.eventType === 'INSERT' && row.author_id === profile.id && writes.current.get(row.body)
+      if (batch) {
+        // The INSERT can arrive before its HTTP receipt. Match its real ID when the receipt arrives.
+        batch.echoes.set(row.id, row)
+        return
+      }
+      if (event.eventType === 'DELETE') {
+        for (const pending of writes.current.values()) {
+          pending.echoes.delete(event.old.id)
+          pending.deleted.add(event.old.id)
+        }
+      }
+      feed.change(rows => applyRowEvent(rows, event))
+    }
     const ch = supabase
       .channel(`chat:${channel.id}:${Math.random().toString(36).slice(2)}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${channel.id}` }, (p) =>
-        setMessages((prev) => {
-          if (!prev) return prev
-          const withoutTemp = prev.filter((m) => !(m.temp && m.author_id === p.new.author_id && m.body === p.new.body))
-          return withoutTemp.some((m) => m.id === p.new.id) ? withoutTemp : [...withoutTemp, p.new]
-        }),
-      )
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, (p) =>
-        setMessages((prev) => prev && prev.filter((m) => m.id !== p.old.id)),
-      )
-      .subscribe()
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${channel.id}` }, apply)
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, apply)
+      .subscribe(feed.onStatus)
     return () => {
-      alive = false
+      feed.close()
+      writes.current.clear()
+      feedRef.current = null
       supabase.removeChannel(ch)
     }
-  }, [channel.id])
+  }, [channel.id, profile.id])
 
   useLayoutEffect(() => {
     const el = listRef.current
     if (el && stick.current) el.scrollTop = el.scrollHeight
-  }, [messages])
+  }, [messages, sending])
 
   const onScroll = () => {
     const el = listRef.current
@@ -59,30 +70,48 @@ export default function TextChannel({ channel, profile, compact = false }) {
     play('send')
     setDraft('')
     stick.current = true
-    const temp = { id: `t${Date.now()}`, temp: true, author_id: profile.id, author_name: profile.username, body, created_at: new Date().toISOString() }
-    setMessages((prev) => [...(prev ?? []), temp])
+    const feed = feedRef.current
+    const batch = writes.current.get(body) ?? { pending: 0, echoes: new Map(), deleted: new Set() }
+    writes.current.set(body, batch)
+    batch.pending++
+    const temp = { id: crypto.randomUUID(), temp: true, author_id: profile.id, author_name: profile.username, body, created_at: new Date().toISOString() }
+    setSending(prev => [...prev, temp])
     const { data, error } = await supabase
       .from('messages')
       .insert({ channel_id: channel.id, author_name: profile.username, body })
       .select('id, author_id, author_name, body, created_at')
       .single()
-    setMessages((prev) => {
-      const rest = prev.filter((m) => m.id !== temp.id)
-      if (error) return [...rest, { ...temp, failed: true }]
-      return rest.some((m) => m.id === data.id) ? rest : [...rest, data]
-    })
+    if (feed !== feedRef.current) return
+    if (error) setSending(prev => prev.map(m => m.id === temp.id ? { ...m, failed: true } : m))
+    else {
+      batch.echoes.delete(data.id)
+      if (!batch.deleted.has(data.id)) feed.change(rows => applyRowEvent(rows, { eventType: 'INSERT', new: data }))
+      setSending(prev => prev.filter(m => m.id !== temp.id))
+    }
+    if (--batch.pending === 0) {
+      writes.current.delete(body)
+      for (const row of batch.echoes.values()) feed.change(rows => applyRowEvent(rows, { eventType: 'INSERT', new: row }))
+    }
   }
 
   const remove = async (id) => {
-    setMessages((prev) => prev.filter((m) => m.id !== id))
-    await supabase.from('messages').delete().eq('id', id)
+    const feed = feedRef.current
+    const { error } = await supabase.from('messages').delete().eq('id', id).select('id').single()
+    if (feed !== feedRef.current) return
+    if (error) setDeleteErrors(prev => prev.includes(id) ? prev : [...prev, id])
+    else {
+      setDeleteErrors(prev => prev.filter(item => item !== id))
+      feed.change(rows => rows.filter(m => m.id !== id))
+    }
   }
 
+  const visible = useMemo(() => [...(messages ?? []), ...sending].sort((a, b) =>
+    Date.parse(a.created_at) - Date.parse(b.created_at) || Number(a.id) - Number(b.id)), [messages, sending])
   return (
     <section className={`chat ${compact ? 'is-compact' : ''}`}>
       <div className="chat-list" ref={listRef} onScroll={onScroll}>
-        {messages?.map((m, i) => {
-          const prev = messages[i - 1]
+        {visible.map((m, i) => {
+          const prev = visible[i - 1]
           const grouped = prev && prev.author_name === m.author_name && new Date(m.created_at) - new Date(prev.created_at) < 5 * 60e3
           const mine = m.author_id === profile.id
           return (
@@ -96,6 +125,7 @@ export default function TextChannel({ channel, profile, compact = false }) {
                   </header>
                 )}
                 <p>{m.body}</p>
+                {deleteErrors.includes(m.id) && <small role="status">Falha ao apagar</small>}
               </div>
               {mine && !m.temp && (
                 <button type="button" className="msg-del" aria-label="Apagar" onClick={() => remove(m.id)}>

@@ -152,6 +152,7 @@ export default function ServerHub({ servers, ownerId, onDelete, onLeave, returni
   // Posicao no leque aberto: mesmo --spread de deck.css, min(78px, (100vw - cw - 40px) / gaps).
   useLayoutEffect(() => attachFanPhysics(hand.current, '.deck-card', {
     positionAt: card => {
+      if (matchMedia('(max-width:600px)').matches) return Number(card.style.getPropertyValue('--d')) * (card.offsetWidth + 2)
       const spread = Math.min(78, (innerWidth - card.offsetWidth - 40) / (Number(hand.current.style.getPropertyValue('--gaps')) || 1))
       return Number(card.style.getPropertyValue('--d')) * spread
     },

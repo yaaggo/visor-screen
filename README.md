@@ -13,6 +13,7 @@ captura, codificacao e envio. O espectador acompanha a recepcao, a decodificacao
 npm install
 npm run dev          # web
 npm run desktop:dev  # app desktop apontando para o dev server
+npm test             # regressao local de sessao, chat, deck e WebRTC, com Electron e video sintetico
 ```
 
 Copie `.env.example` para `.env.local` e preencha `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY`.

@@ -5,6 +5,7 @@ import SoundToggle from './SoundToggle.jsx'
 import ServerBoard from './ServerBoard.jsx'
 import { play } from '../lib/sound.js'
 import { supabase } from '../lib/supabase.js'
+import { applyRowEvent, createLiveRows } from '../lib/liveRows.js'
 import { deviceKind, endpointId, presencePublisher } from '../lib/presence.js'
 import { go, replaceRoute, roomLink, useRoute } from '../lib/route.js'
 import { useRadar } from '../lib/radar.js'
@@ -20,42 +21,38 @@ import ScreenChannel from './ScreenChannel.jsx'
 // Lista viva de uma tabela (select inicial + realtime)
 function useLive(table, filter, order, deps) {
   const [rows, setRows] = useState(null)
+  const current = useRef(null)
+  const filterId = filter?.[1]
   useEffect(() => {
     setRows(null)
     if (filter === false) return
-    let alive = true
-    let q = supabase.from(table).select('*').order(order, { ascending: true })
-    if (filter) q = q.eq(filter[0], filter[1])
-    q.then(({ data }) => alive && setRows(data ?? []))
-    const ch = supabase
-      .channel(`live:${table}:${filter?.[1] ?? 'all'}:${Math.random().toString(36).slice(2)}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table, ...(filter ? { filter: `${filter[0]}=eq.${filter[1]}` } : {}) }, (p) => {
-        setRows((prev) => {
-          if (!prev) return prev
-          if (p.eventType === 'INSERT') return prev.some((r) => r.id === p.new.id) ? prev : [...prev, p.new]
-          if (p.eventType === 'UPDATE') return prev.map((r) => (r.id === p.new.id ? p.new : r))
-          if (p.eventType === 'DELETE') return prev.filter((r) => r.id !== p.old.id)
-          return prev
-        })
-      })
-      .subscribe()
-    // DELETE nao respeita filtro: escuta sem filtro tambem
-    const del = filter
-      ? supabase
-          .channel(`live-del:${table}:${filter[1]}:${Math.random().toString(36).slice(2)}`)
-          .on('postgres_changes', { event: 'DELETE', schema: 'public', table }, (p) =>
-            setRows((prev) => prev && prev.filter((r) => r.id !== p.old.id)),
-          )
-          .subscribe()
-      : null
+    const feed = createLiveRows(() => {
+      const q = supabase.from(table).select('*').order(order, { ascending: true })
+      return filter ? q.eq(filter[0], filter[1]) : q
+    }, setRows)
+    current.current = { feed, filterId }
+    const apply = event => feed.change(list => applyRowEvent(list, event))
+    feed.load()
+    const ch = supabase.channel(`live:${table}:${filterId ?? 'all'}:${Math.random().toString(36).slice(2)}`)
+    if (filter) {
+      for (const event of ['INSERT', 'UPDATE']) ch.on('postgres_changes', {
+        event, schema: 'public', table, filter: `${filter[0]}=eq.${filterId}`,
+      }, apply)
+      // DELETE nao respeita filtro; ids de canais sao unicos.
+      ch.on('postgres_changes', { event: 'DELETE', schema: 'public', table }, apply)
+    } else ch.on('postgres_changes', { event: '*', schema: 'public', table }, apply)
+    ch.subscribe(feed.onStatus)
     return () => {
-      alive = false
+      feed.close()
+      current.current = null
       supabase.removeChannel(ch)
-      if (del) supabase.removeChannel(del)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps)
-  return [rows, setRows]
+  return [rows, update => {
+    const source = current.current
+    if (source && source.filterId === filterId) source.feed.change(update)
+  }]
 }
 
 // Carta do centro do deck vira a capa do servidor na lateral: a moldura encolhe
@@ -349,7 +346,8 @@ export default function Shell({ profile }) {
   }
 
   const deleteChannel = async (id) => {
-    await supabase.from('channels').delete().eq('id', id)
+    const { error } = await supabase.from('channels').delete().eq('id', id).select('id').single()
+    if (error) return
     setChannels((prev) => prev.filter((c) => c.id !== id))
     const cached = channelCache.current.get(serverId)
     if (cached) channelCache.current.set(serverId, cached.filter(c => c.id !== id))

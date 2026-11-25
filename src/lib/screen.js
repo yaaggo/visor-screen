@@ -4,22 +4,10 @@
 import { getPreset, mungeAnswer, tuneSender, videoConstraints } from './quality.js'
 import { deviceKind, presencePublisher } from './presence.js'
 import { API_BASE } from './env.js'
+import { createIceLoader } from './ice.js'
 import { readInboundVideo, readOutboundVideo } from './screenStats.js'
 
-const FALLBACK_ICE = [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] }]
-let iceCache = null
-
-async function loadIce() {
-  if (iceCache) return iceCache
-  try {
-    const r = await fetch(`${API_BASE}/api/turn`, { cache: 'no-store' })
-    const data = await r.json()
-    iceCache = data.iceServers?.length ? data.iceServers : FALLBACK_ICE
-  } catch {
-    iceCache = FALLBACK_ICE
-  }
-  return iceCache
-}
+const loadIce = createIceLoader(`${API_BASE}/api/turn`)
 
 const uid = () => Math.random().toString(36).slice(2, 10)
 const GONE_MS = 15000
@@ -77,7 +65,7 @@ export class ScreenRoom {
   }
 
   async join() {
-    this.ice = await loadIce()
+    if (!this.ice) void loadIce()
     if (this.closed) return
     this.publisher = presencePublisher(() => this.channel?.state === 'joined' && this.publishPresence(), {
       snapshot: () => JSON.stringify(this.presencePayload()),
@@ -275,6 +263,11 @@ export class ScreenRoom {
     pc.sid = sid
     pc.pendingIce = []
     this.out.set(viewerId, pc)
+    if (!this.ice) {
+      const iceServers = await loadIce()
+      if (this.out.get(viewerId) !== pc) return
+      pc.setConfiguration({ iceServers })
+    }
     const [video] = this.local.getVideoTracks()
     const sender = pc.addTrack(video, this.local)
     preferCodecs(pc.getTransceivers().find((t) => t.sender === sender))
@@ -371,6 +364,11 @@ export class ScreenRoom {
     if (!input || input.sid !== sid || input.pc) return
     const pc = new RTCPeerConnection({ iceServers: this.ice })
     input.pc = pc
+    if (!this.ice) {
+      const iceServers = await loadIce()
+      if (this.inputs.get(from) !== input) return
+      pc.setConfiguration({ iceServers })
+    }
     pc.ontrack = (e) => {
       // Give a 60 fps viewer a few frames to absorb uneven packet arrival.
       if (e.track.kind === 'video' && 'jitterBufferTarget' in e.receiver) {

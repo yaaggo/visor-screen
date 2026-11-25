@@ -133,6 +133,8 @@ button:disabled {
   background: var(--white);
   animation: breathe 1.2s ease-in-out infinite;
 }
+.boot-retry { align-content:center; gap:12px; color:var(--muted) }
+.boot-retry button { padding:8px 14px; border-radius:var(--r-md); background:var(--raised); color:var(--text) }
 
 /* ---------- Login ---------- */
 .login {

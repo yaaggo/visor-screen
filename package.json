@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test": "npm run test:unit && npm run test:ui",
+    "test:unit": "node --test tests/*.test.js",
+    "test:ui": "node tests/browser/run.mjs",
     "preview": "vite preview",
     "native": "cmd /c electron\\native\\build.cmd",
     "native:capture": "cargo build --release --locked --manifest-path electron/capture-rs/Cargo.toml",

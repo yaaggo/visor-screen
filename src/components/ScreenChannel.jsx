@@ -478,7 +478,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
       </div>
       {chatChannel && (
         <div className="screen-chat" aria-hidden={!chat}>
-          {chat && <TextChannel channel={chatChannel} profile={profile} compact />}
+          {chat && <TextChannel key={chatChannel.id} channel={chatChannel} profile={profile} compact />}
         </div>
       )}
     </div>

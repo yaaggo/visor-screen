@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { ArrowRight, Check, Link2, LoaderCircle } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { Scramble } from './ui.jsx'
-import { pendingJoin } from '../lib/route.js'
+import { useRoute } from '../lib/route.js'
 
 const VALID = /^[a-zA-Z0-9_.-]{2,20}$/
 const PIN_MAX = 4
@@ -16,7 +16,7 @@ export default function Login({ onReady }) {
   const [name, setName] = useState('')
   const [pin, setPin] = useState('')
   // Veio por um link de sala: depois de entrar (ou criar a conta) o app abre a sala sozinho.
-  const [invite] = useState(() => !!pendingJoin())
+  const { join: invite } = useRoute()
   const [phase, setPhase] = useState('idle') // idle | busy | done | error
   const [error, setError] = useState('')
   const pinRef = useRef(null)

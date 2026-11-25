@@ -437,7 +437,16 @@ function ShareSheet({ origin, title, onClose, children }) {
     const frames = [{ transform: start, borderRadius: '40px' }, { transform: 'none', borderRadius: '22px' }]
     return el.animate(reverse ? frames.reverse() : frames, { duration: reverse ? 300 : 460, easing: reverse ? 'cubic-bezier(.5,0,.75,0)' : 'cubic-bezier(.32,.72,0,1)', fill: 'both' })
   }
-  useLayoutEffect(() => { play('open'); morph(false) }, [])
+  useLayoutEffect(() => {
+    const opener = document.activeElement
+    const sheet = ref.current
+    play('open')
+    morph(false)
+    sheet.querySelector('button')?.focus({ preventScroll: true })
+    return () => {
+      if (sheet.contains(document.activeElement) && opener?.isConnected) opener.focus({ preventScroll: true })
+    }
+  }, [])
   const close = () => {
     if (closing.current) return
     closing.current = true

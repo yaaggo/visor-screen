@@ -73,6 +73,21 @@
 @media (hover:none) {
   .deck-hand .deck-card { translate:calc(var(--d)*var(--spread)) calc(var(--abs)*7px); rotate:calc(var(--d)*7deg) }
 }
+@media (max-width:600px) {
+  .deck-hub:not(.clips-hub) .deck-hand {
+    --cw:min(116px, calc((100vw - 44px) / 4));
+    --ch:calc(var(--cw) * 1.42);
+    --spread:calc(var(--cw) + 2px);
+  }
+  .deck-hub:not(.clips-hub) .deck-hand .deck-card {
+    left:calc(var(--cw) * -.5); padding:6px; gap:4px;
+    translate:calc(var(--d) * var(--spread)) calc(var(--abs) * 3px);
+    rotate:calc(var(--d) * 2deg);
+  }
+  .deck-hub:not(.clips-hub) .deck-add .deck-caption {
+    padding-inline:0; white-space:normal; line-height:1.1; font-size:clamp(11px,3.2vw,13px);
+  }
+}
 .deck-facsimile { position:absolute; top:50%; left:50%; translate:-50% -50%; transform-origin:center; transform:none!important; transition:none }
 .deck-trash { position:absolute; right:clamp(16px,5vw,84px); top:50%; translate:0 -50%; width:72px; height:72px; display:grid; place-items:center; border:1px dashed var(--line-strong); border-radius:20px; color:var(--muted); opacity:0; pointer-events:none; transition:opacity .2s; overflow:hidden }
 .deck-trash.visible { opacity:.85 }

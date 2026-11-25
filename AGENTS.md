@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-22, versao 1.16.1 (limite de presenca do Supabase: 4 tracks/30 s por canal; espectador que some tem 15 s).
+Ultima atualizacao: 2026-11-24, base 1.16.1 (correcoes locais de sessao, chat, ICE e deck apos o QA).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -251,6 +251,22 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+Correcoes locais de 2026-11-24 sobre a 1.16.1, sem release publicada:
+
+- O boot valida usuario e perfil. Falha temporaria conserva a sessao e mostra "Reconectando"; tenta novamente em 2 a 30 s, ao voltar a rede ou pelo botao. Sessao revogada volta ao login. O Shell e seu CSS carregam sob demanda. Se o arquivo do Shell falhar, o botao recarrega a pagina conservando a sessao e a rota.
+- Mensagens, servidores e canais reconciliam o SELECT com os eventos recebidos durante a consulta. Uma nova assinatura busca outro snapshot. O chat identifica confirmacoes pelo ID retornado, conserva mensagens cuja exclusao falhou e exibe o erro junto ao texto.
+- O cache de ICE tenta novamente apos 5 s em STUN e renova TURN antes de vencer (o endpoint informa ttl em segundos). Uma nova negociacao usa a configuracao vigente; os peers ja conectados continuam com a sua.
+- Em tela estreita, o deck ajusta tamanho, espacamento e rotacao das cartas. O selo de convite acompanha a rota e o painel Transmitir recebe o foco quando abre.
+- `npm test` roda as suites `test:unit` e `test:ui`. A segunda abre um Electron invisivel com perfil temporario, backend simulado local e captura sintetica. Cobre login em file://, entrada em sala, retomada da sessao, historico/Realtime, toque a 320/390/430 px, foco e duas recepcoes WebRTC independentes. TURN configurado no teste usa ICE direto em loopback; validar relay real requer outra rede.
+
+QA de 2026-11-24 na 1.16.1, commit cbe3cbb. Main local e remota conferidas. O HTML publicado pela Vercel apontou para os mesmos JS e CSS principais do build local.
+
+- App e componentes reais com respostas locais simuladas: erro recuperavel 503 em getUser acionou signOut local e mostrou o login. No chat, um INSERT entregue depois do snapshot e antes da resposta da consulta desapareceu da lista. Falha de exclusao tambem tirou a mensagem da tela. Em ScreenRoom, falhar a primeira busca de ICE fez a proxima sala reutilizar apenas STUN, mesmo com o endpoint simulado recuperado.
+- Interface: no deck em 390 x 844 com toque emulado, a rotacao e o deslocamento recortaram as cartas das pontas e parte do rotulo de adicionar. A mesa reproduziu o video simulado. O deck paginou e respondeu a Enter/Escape. Ao abrir Transmitir, o foco ficou fora do dialogo ate Tab. No login de producao, sair da rota de convite sem recarregar manteve o selo de sala.
+- Dois transmissores e um espectador em loopback, com WebRTC real, sinalizacao em memoria e video sintetico mudo: a ausencia simulada do espectador na presenca por 4 s manteve as duas conexoes e a decodificacao. Parar de assistir a primeira preservou a segunda.
+- Canvas 1080p60 com movimento leve, teto de 12 Mbps, janela medida de 5 s por cenario no mesmo Electron: 56,7 fps decodificados com um espectador e 57,1 a 57,3 com tres, sem descartes em ambos. Replay WebCodecs separado produziu MP4 de 3 s, reproduzido em 1920 x 1080. Faltam jogo real, WAN/TURN, F9 global e aparelho movel fisico nesta rodada.
+- Build comparativo em memoria com o mesmo Vite e gzip do Node: carregar Shell sob demanda baixou o JS inicial de 206755 para 145793 bytes. Sugestao pendente. Os scripts, capturas e resultados desta rodada ficam localmente em release/visor-review-20261124/ (ignorado pelo Git). A revisao nao publicou versao.
 
 1.16.1 — transmissoes que sumiam com 3 pessoas na sala (2026-11-22):
 - Relato: com 3 pessoas (2 na web, 1 no desktop), duas deixaram de ver a tela uma da outra e so viam a do terceiro.
