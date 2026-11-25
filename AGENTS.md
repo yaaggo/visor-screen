@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-24, base 1.16.1 (correcoes locais de sessao, chat, ICE e deck apos o QA).
+Ultima atualizacao: 2026-11-24, versao 1.16.2 (sessao resiliente, reconciliacao do chat, recuperacao de ICE/TURN, deck mobile, Shell sob demanda e testes de regressao).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -252,7 +252,7 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 
 ## Estado atual
 
-Correcoes locais de 2026-11-24 sobre a 1.16.1, sem release publicada:
+1.16.2 — sessao, chat, ICE/TURN, deck mobile e carregamento sob demanda (2026-11-24):
 
 - O boot valida usuario e perfil. Falha temporaria conserva a sessao e mostra "Reconectando"; tenta novamente em 2 a 30 s, ao voltar a rede ou pelo botao. Sessao revogada volta ao login. O Shell e seu CSS carregam sob demanda. Se o arquivo do Shell falhar, o botao recarrega a pagina conservando a sessao e a rota.
 - Mensagens, servidores e canais reconciliam o SELECT com os eventos recebidos durante a consulta. Uma nova assinatura busca outro snapshot. O chat identifica confirmacoes pelo ID retornado, conserva mensagens cuja exclusao falhou e exibe o erro junto ao texto.
