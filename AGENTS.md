@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-24, versao 1.16.2 (sessao resiliente, reconciliacao do chat, recuperacao de ICE/TURN, deck mobile, Shell sob demanda e testes de regressao).
+Ultima atualizacao: 2026-11-26, versao 1.16.3 (login: mensagens claras para nome em uso, rede e limite; nome sem acento).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -251,6 +251,25 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.16.3 — login e cadastro (2026-11-26):
+
+- Relato: pessoas novas "nao conseguiam criar a conta, como se ja existisse". Logs do Auth (22 a 27/11): todo cadastro de nome
+  livre completou (signup + perfil, nenhuma conta orfa). As recusas foram `user_already_exists` (422): o nome ja era de outra
+  pessoa (ex.: alguem tentou `bosta` duas vezes e criou outro nome 9 s depois) ou a propria pessoa errou a senha. O app mostrava
+  "Senha incorreta", que para quem chega pela primeira vez parece erro do app.
+- Login e cadastro sao o mesmo formulario (o Supabase nao diz se o nome e de outra pessoa ou se a senha esta errada; nao ha como
+  separar sem expor quem existe). A logica foi para `src/lib/login.js` (`authenticate`) com testes em `tests/login.test.js`:
+  so tenta criar a conta quando o login responde `invalid_credentials`; rede caida vira "Sem conexão" e 429 vira
+  "Muitas tentativas, aguarde" (antes uma queda de rede no login podia terminar em "Senha incorreta"; uma excecao deixava o
+  botao girando para sempre). Nome existente = "Nome em uso ou senha errada", limpa a senha e foca nela.
+- Nome: acentos viram letra simples ao digitar (`joão` -> `joao`); simbolos mostram "Só letras, números, _ . -" no rotulo
+  (antes o botao so ficava desativado). "Mínimo 2 letras" aparece depois de comecar a senha. Trava por ref contra Enter +
+  clique simultaneos (dois cadastros paralelos davam "ja existe" no segundo).
+- Visto nos logs, nao alterado: aba escondida por mais de 1 h deixa o token vencer (o supabase-js pausa a renovacao com a aba
+  oculta); broadcasts dao 401 ate a aba voltar e renovar.
+- QA: Vite dev com Supabase real e contas temporarias (apagadas): conta nova entra no deck; mesmo nome com outra caixa e senha
+  errada mostra a mensagem nova; nome com acento/simbolo. `npm test` completo passou.
 
 1.16.2 — sessao, chat, ICE/TURN, deck mobile e carregamento sob demanda (2026-11-24):
 

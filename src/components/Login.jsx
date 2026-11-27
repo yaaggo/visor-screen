@@ -3,14 +3,9 @@ import { ArrowRight, Check, Link2, LoaderCircle } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { Scramble } from './ui.jsx'
 import { useRoute } from '../lib/route.js'
+import { authenticate, cleanName, MESSAGES, NAME, nameHint } from '../lib/login.js'
 
-const VALID = /^[a-zA-Z0-9_.-]{2,20}$/
 const PIN_MAX = 4
-
-// Conta = e-mail sintetico (nunca recebe e-mail; confirmacao desligada) + senha derivada do PIN.
-// O prefixo existe porque o Supabase exige senha de 6+ caracteres; o segredo real e o PIN (1-4 caracteres).
-const emailFor = (name) => `${name.toLowerCase()}@visor-screen.vercel.app`
-const passwordFor = (pin) => `visor-pin:${pin}`
 
 export default function Login({ onReady }) {
   const [name, setName] = useState('')
@@ -20,45 +15,32 @@ export default function Login({ onReady }) {
   const [phase, setPhase] = useState('idle') // idle | busy | done | error
   const [error, setError] = useState('')
   const pinRef = useRef(null)
-  const valid = VALID.test(name) && pin.length >= 1
+  // Trava sincrona: Enter + clique no mesmo instante criavam duas tentativas (a segunda via "conta ja existe").
+  const busy = useRef(false)
+  const valid = NAME.test(name) && pin.length >= 1
+  const hint = nameHint(name, pin.length > 0)
 
-  const fail = (msg) => {
-    setError(msg)
+  const fail = (reason) => {
+    setError(MESSAGES[reason] || MESSAGES.retry)
     setPhase('error')
     setTimeout(() => setPhase('idle'), 500)
+    if (reason === 'taken') { setPin(''); pinRef.current?.focus() }
   }
 
   const submit = async (e) => {
     e.preventDefault()
-    if (!valid || phase === 'busy') return
+    if (!valid || busy.current) return
+    busy.current = true
     setPhase('busy')
     setError('')
     await supabase.auth.signOut({ scope: 'local' })
-
-    const email = emailFor(name)
-    const password = passwordFor(pin)
-    let { data, error: err } = await supabase.auth.signInWithPassword({ email, password })
-
-    if (err) {
-      // nao entrou: nome novo (cria a conta) ou PIN errado (nome ja existe)
-      const up = await supabase.auth.signUp({ email, password })
-      if (up.error) {
-        const taken = up.error.code === 'user_already_exists' || /already/i.test(up.error.message)
-        return fail(taken ? 'Senha incorreta' : 'Tente de novo')
-      }
-      data = up.data
-      if (!data.session) return fail('Tente de novo')
-    }
-
-    const session = data.session
-    let { data: profile } = await supabase.from('profiles').select('id, username').eq('id', session.user.id).maybeSingle()
-    if (!profile) {
-      const ins = await supabase.from('profiles').insert({ id: session.user.id, username: name }).select('id, username').single()
-      if (ins.error) return fail(ins.error.code === '23505' ? 'Em uso' : 'Tente de novo')
-      profile = ins.data
+    const result = await authenticate(supabase, name, pin)
+    if (result.status !== 'ok') {
+      busy.current = false
+      return fail(result.reason)
     }
     setPhase('done')
-    setTimeout(() => onReady(session, profile), 520)
+    setTimeout(() => onReady(result.session, result.profile), 520)
   }
 
   return (
@@ -69,8 +51,8 @@ export default function Login({ onReady }) {
           <Scramble text="visor" className="brand-name" />
           {invite && <span className="login-invite" data-tip="Link de sala" aria-label="Link de sala"><Link2 size={13} strokeWidth={2}/>sala</span>}
         </div>
-        <label className={`field login-name ${name ? 'has-value' : ''} ${error ? 'has-error' : ''}`}>
-          <span className="field-label">{error || 'usuario'}</span>
+        <label className={`field login-name ${name ? 'has-value' : ''} ${error || hint ? 'has-error' : ''}`}>
+          <span className="field-label" aria-live="polite">{error || hint || 'usuario'}</span>
           <input
             autoFocus
             value={name}
@@ -78,7 +60,7 @@ export default function Login({ onReady }) {
             spellCheck={false}
             autoComplete="username"
             onChange={(e) => {
-              setName(e.target.value.replace(/\s/g, ''))
+              setName(cleanName(e.target.value))
               setError('')
             }}
             onKeyDown={(e) => e.key === 'Enter' && !pin && (e.preventDefault(), pinRef.current?.focus())}
