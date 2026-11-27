@@ -169,3 +169,6 @@
 .deck-hub.is-dealing .deck-card { animation:deck-deal .72s calc(var(--i,0) * 55ms) var(--settle) backwards }
 @keyframes deck-deal { from { transform:translateY(150%) rotate(calc(var(--d,0) * -6deg)); opacity:0 } }
 @media(prefers-reduced-motion:reduce){ .deck-hub.is-dealing .deck-card{animation:none} .deck-hub.is-leaving .deck-hand{transition:none} }
+/* notch e barra de gestos do celular */
+.deck-footer { bottom:calc(10px + env(safe-area-inset-bottom)) }
+.deck-hand { margin-bottom:env(safe-area-inset-bottom) }

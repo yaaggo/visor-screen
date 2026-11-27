@@ -27,10 +27,14 @@ export const pref = {
 
 export const exeKey = (exe) => exe.toLowerCase()
 
+// Celular (Android e iPhone) nao tem captura de tela no navegador: so a camera/placa como fonte.
+export const screenCaptureSupported = () => desktop || !!navigator.mediaDevices?.getDisplayMedia
+const DEFAULT_PRESET = () => (screenCaptureSupported() ? '1080p60' : '720p30')
+
 // Estado de configuracao da transmissao (persistido por usuario no navegador/app)
 export function useShareConfig() {
   const [cfg, setCfg] = useState(() => ({
-    kind: pref.get('visor.kind', 'monitor'), // monitor | window | device
+    kind: screenCaptureSupported() ? pref.get('visor.kind', 'monitor') : 'device', // monitor | window | device
     sourceId: null,
     engine: pref.get('visor.captureEngineStable', 'rust'),
     deviceId: pref.get('visor.device', null),
@@ -38,8 +42,8 @@ export function useShareConfig() {
     audioMode: pref.get('visor.audioMode', 'all'), // off | all
     audioGain: pref.get('visor.audioGain', 1.5), // 0.5 a 3.0 (padrao 150% para compensar apps baixos no Windows)
     exclude: pref.get('visor.exclude', []), // exes (minusculo) que NAO entram no audio (so desktop)
-    presetId: pref.get('visor.preset', '1080p60'),
-    bitrate: pref.get('visor.bitrate', getPreset(pref.get('visor.preset', '1080p60')).bitrate),
+    presetId: pref.get('visor.preset', DEFAULT_PRESET()),
+    bitrate: pref.get('visor.bitrate', getPreset(pref.get('visor.preset', DEFAULT_PRESET())).bitrate),
     replay: pref.get('visor.replay', 0), // 0 = desligado; 30/60 = segundos guardados para o F9 (so desktop)
   }))
   const update = useCallback((patch) => {
@@ -71,7 +75,7 @@ export default function SharePanel({ cfg, update, live, open, peers, uplink, app
 
   return (
     <div className="share-panel">
-      {!live && (
+      {!live && screenCaptureSupported() && (
         <div className="sp-row sp-head">
           <Segmented
             label="Fonte"

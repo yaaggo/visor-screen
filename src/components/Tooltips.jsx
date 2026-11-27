@@ -5,7 +5,9 @@ export default function Tooltips() {
   const ref = useRef(null)
   useEffect(() => {
     const tip = ref.current
-    let anchor, timer
+    let anchor, timer, touched = false
+    // Depois de um toque o botao recebe foco: sem isso o tooltip abria e ficava preso no celular.
+    const pointer = e => { touched = e.pointerType !== 'mouse'; hide() }
     const hide = () => {
       clearTimeout(timer)
       tip.hidePopover?.()
@@ -16,7 +18,7 @@ export default function Tooltips() {
       const next = e.target.closest?.('[data-tip]')
       if (next === anchor) return
       hide()
-      if (!next?.dataset.tip || e.pointerType === 'touch') return
+      if (!next?.dataset.tip || e.pointerType === 'touch' || e.pointerType === 'pen' || (e.type === 'focusin' && touched)) return
       anchor = next
       timer = setTimeout(() => {
         if (!next.isConnected) return hide()
@@ -34,7 +36,7 @@ export default function Tooltips() {
       }, e.type === 'focusin' ? 0 : 250)
     }
     const leave = e => { if (anchor && !anchor.contains(e.relatedTarget)) hide() }
-    const events = {pointerover:show,focusin:show,pointerout:leave,focusout:leave,pointerdown:hide,scroll:hide,keydown:hide}
+    const events = {pointerover:show,focusin:show,pointerout:leave,focusout:leave,pointerdown:pointer,keydown:e => { touched = false; hide() },scroll:hide}
     for (const [type,fn] of Object.entries(events)) document.addEventListener(type,fn,true)
     window.addEventListener('resize',hide)
     return () => {

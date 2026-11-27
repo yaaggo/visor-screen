@@ -93,3 +93,11 @@
 /* Campo ASCII atras das mesas (useAsciiField): o fundo do tabuleiro deixa de ser so preto */
 .server-board { isolation:isolate }
 .board-field { position:absolute; inset:0; width:100%; height:100%; z-index:-1; pointer-events:none }
+/* celular: a carta do perfil nao encosta nos rotulos das mesas nem fica sob a barra de gestos */
+@container (max-width:620px) {
+  .board-seat { min-height:116px; padding-bottom:calc(12px + env(safe-area-inset-bottom)) }
+  .seat-card { width:76px; height:102px }
+  .board-table { --tw:min(100%,320px) }
+  .board-tables { gap:22px }
+}
+.board-bar { padding-top:calc(14px + env(safe-area-inset-top)) }

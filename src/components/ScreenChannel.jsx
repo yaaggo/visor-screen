@@ -15,6 +15,7 @@ import { ReplayBuffer, replaySupported } from '../lib/replay.js'
 import { AppAudioMixer } from '../lib/appAudio.js'
 import { useAsciiField } from '../lib/useAsciiField.js'
 import { play } from '../lib/sound.js'
+import { enterFullscreen, exitFullscreen, watchFullscreen } from '../lib/fullscreen.js'
 import TextChannel from './TextChannel.jsx'
 
 let selfPid = 0
@@ -60,7 +61,9 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
   const [hover, setHover] = useState(null)
   const hoverTimer = useRef(null)
   const [menu, setMenu] = useState(null)
-  const [chat, setChat] = useState(() => pref.get('visor.chatOpen', true))
+  // Celular: o chat comeca fechado (cobriria a transmissao) e a escolha fica salva separada da do computador.
+  const [chatKey] = useState(() => matchMedia('(max-width: 600px)').matches ? 'visor.chatOpenMobile' : 'visor.chatOpen')
+  const [chat, setChat] = useState(() => pref.get(chatKey, chatKey === 'visor.chatOpen'))
   const [toasts, setToasts] = useState([])
   const [unread, setUnread] = useState(0)
   // Mensagens da call: gota ao chegar; sem o chat a vista (fechado, outra tela ou janela sem foco) conta
@@ -418,7 +421,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
           visible={visible}
           audience={allPeers.filter(p => !p.sharing)}
           toasts={toasts}
-          onToast={() => { setChat(true); pref.set('visor.chatOpen', true) }}
+          onToast={() => { setChat(true); pref.set(chatKey, true) }}
           showAdd={!s.sharing}
           onAdd={() => { setError(false); setPanelOpen(true) }}
           shareOpen={panelOpen}
@@ -468,7 +471,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
             active={chat}
             onClick={() => {
               setChat((v) => !v)
-              pref.set('visor.chatOpen', !chat)
+              pref.set(chatKey, !chat)
             }}
           >
             <MessageSquare size={17} fill={chat ? 'currentColor' : 'none'}/>
@@ -603,19 +606,63 @@ export function Stage({ tools, stream, local, stats, sendStats, captureEngine, c
     }
   }, [stream, local, muted, volume, blocked, hasAudio])
 
-  useEffect(() => {
-    const on = () => setFull(document.fullscreenElement === box.current)
-    document.addEventListener('fullscreenchange', on)
-    return () => document.removeEventListener('fullscreenchange', on)
-  }, [])
+  useEffect(() => watchFullscreen(box.current, video.current, setFull), [])
 
-  const toggleFull = () => (document.fullscreenElement ? document.exitFullscreen() : box.current.requestFullscreen())
+  // Celular: a tela nao apaga enquanto voce assiste a uma transmissao (Wake Lock; liberado ao esconder a aba).
+  useEffect(() => {
+    if (local || !stream || !navigator.wakeLock) return
+    let lock = null, alive = true
+    const take = () => {
+      if (document.visibilityState !== 'visible' || lock) return
+      navigator.wakeLock.request('screen').then(l => {
+        if (!alive) return l.release()
+        lock = l
+        l.addEventListener('release', () => { if (lock === l) lock = null })
+      }).catch(() => {})
+    }
+    take()
+    document.addEventListener('visibilitychange', take)
+    return () => {
+      alive = false
+      document.removeEventListener('visibilitychange', take)
+      lock?.release().catch(() => {})
+    }
+  }, [stream, local])
+
+  const toggleFull = () => (full ? exitFullscreen(video.current) : enterFullscreen(box.current, video.current))
+
+  // Toque: um toque mostra/esconde os controles (somem sozinhos em 3,5 s); dois toques = tela cheia.
+  const [hud, setHud] = useState(false)
+  const hudTimer = useRef(0)
+  const lastTap = useRef(null)
+  const lastPointer = useRef('mouse')
+  useEffect(() => () => clearTimeout(hudTimer.current), [])
+  const showHud = (on) => {
+    clearTimeout(hudTimer.current)
+    setHud(on)
+    if (on) hudTimer.current = setTimeout(() => setHud(false), 3500)
+  }
+  const tap = e => {
+    lastPointer.current = e.pointerType
+    if (e.pointerType === 'mouse' || !stream) return
+    if (e.target.closest('.stage-hud, .diag')) return showHud(true)
+    const now = performance.now(), prev = lastTap.current
+    if (prev && now - prev.t < 320 && Math.hypot(e.clientX - prev.x, e.clientY - prev.y) < 40) {
+      lastTap.current = null
+      toggleFull()
+      showHud(false)
+      return
+    }
+    lastTap.current = { t: now, x: e.clientX, y: e.clientY }
+    showHud(!hud)
+  }
   const silent = muted || blocked || volume === 0
   const volPct = Math.round((muted ? 0 : volume) * 100)
 
   return (
-    <div ref={box} className={`stage ${stream ? 'has-stream' : ''}`} onDoubleClick={e => stream && !e.altKey && toggleFull()}
-      onPointerDown={pingAt} onPointerMove={aim} onPointerLeave={() => box.current?.classList.remove('is-aiming')}>
+    <div ref={box} className={`stage ${stream ? 'has-stream' : ''} ${hud ? 'show-hud' : ''} ${full ? 'is-full' : ''}`}
+      onDoubleClick={e => stream && !e.altKey && lastPointer.current === 'mouse' && toggleFull()}
+      onPointerUp={tap} onPointerDown={pingAt} onPointerMove={aim} onPointerLeave={() => box.current?.classList.remove('is-aiming')}>
       <video ref={video} autoPlay={!local} playsInline muted />
       {!!pings.length && <div className="stage-pings" aria-hidden>
         {pings.map(p => <span key={p.key} className={'stage-ping' + (p.mine ? ' is-mine' : '')} style={{ left: p.left, top: p.top }}>

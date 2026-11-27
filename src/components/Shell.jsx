@@ -101,6 +101,8 @@ export default function Shell({ profile }) {
   const [servers, setServers] = useLive('servers', null, 'created_at', [])
   const [channels, setChannels] = useLive('channels', serverId ? ['server_id', serverId] : false, 'created_at', [serverId])
   const [collapsed, setCollapsed] = useState(false)
+  // Celular: a lateral e uma gaveta; trocar de canal (ou de servidor) a fecha.
+  useEffect(() => { if (matchMedia('(max-width: 860px)').matches) setCollapsed(false) }, [channelId, serverId])
 
   const [editing, setEditing] = useState(false)
   const [serverPhoto, setServerPhoto] = useState(null)
@@ -433,6 +435,7 @@ export default function Shell({ profile }) {
               <ProfileMenu profile={profile} photo={photo} edit={()=>setEditing(true)} logout={logout}/>
             </div>
       </aside>}
+      {server && channel && <button type="button" className="shell-scrim" aria-label="Fechar canais" onClick={() => setCollapsed(false)}/>}
 
       <main className="main">
         {server && channel && <header className="main-head">

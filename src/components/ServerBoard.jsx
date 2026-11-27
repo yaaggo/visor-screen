@@ -114,13 +114,22 @@ export default function ServerBoard({ server, channels, people, me, header, prof
         card.animate([{ transform: at(surface) + ' scale(.6)', opacity: 1 },
           { transform: `translate(${to.left + to.width / 2 - base.left - c.width / 2}px,${to.top + to.height - base.top - c.height * .7}px) scale(.7)`, opacity: 0 }],
           { duration: 520, easing: 'cubic-bezier(.32,.72,0,1)', fill: 'forwards' }).onfinish = () => card.remove()
-        grow.onfinish = () => {
-          document.body.classList.remove('board-entering')
-          document.body.classList.add('board-revealing')
-          setTimeout(() => document.body.classList.remove('board-revealing'), 700)
-          zoom.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 240, fill: 'forwards' }).onfinish = () => zoom.remove()
-        }
+        grow.onfinish = reveal
       }))
+      // Se a animacao nao terminar (aba em segundo plano, app trocado no celular), a sala aparece mesmo assim.
+      const guard = setTimeout(reveal, 1400)
+      let revealed = false
+      function reveal() {
+        if (revealed) return
+        revealed = true
+        clearTimeout(guard)
+        card.remove()
+        document.body.classList.remove('board-entering')
+        document.body.classList.add('board-revealing')
+        setTimeout(() => document.body.classList.remove('board-revealing'), 700)
+        zoom.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 240, fill: 'forwards' }).onfinish = () => zoom.remove()
+        setTimeout(() => zoom.remove(), 600)
+      }
     }
   }
 

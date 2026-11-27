@@ -9,6 +9,7 @@ import { attachFanPhysics } from '../lib/fanPhysics.js'
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches
 const FAIL_AFTER_MS = 15000 // sem video ate aqui, o verso avisa (o WebRTC segue tentando)
 const HOLD_MS = 260 // segurar uma transmissao por esse tempo a transforma em carta
+const HOLD_TOUCH_MS = 480 // no toque e mais longo: um toque para ver os controles nao levanta a carta
 const GAP = 10
 const SLOT = '__slot'
 const EDGE = 14 // soltar uma transmissao a esta distancia da borda da janela (ou fora dela) abre o miniplayer
@@ -53,9 +54,19 @@ function spotLayout(W, H, ids, spot) {
   return out
 }
 
-function layout(W, H, ids, spot) {
+// Celula mais alta que 16:9 (mesa em retrato no celular): o quadro fica 16:9 e centralizado na celula,
+// em vez de uma carta alta com o video numa faixa no meio.
+function fit16x9(rects) {
+  for (const r of Object.values(rects)) {
+    const h = r.w * 9 / 16
+    if (r.h > h * 1.08) { r.y += (r.h - h) / 2; r.h = h }
+  }
+  return rects
+}
+
+export function layout(W, H, ids, spot) {
   if (!ids.length || !W || !H) return {}
-  return spot && ids.includes(spot) && ids.length > 1 ? spotLayout(W, H, ids, spot) : gridLayout(W, H, ids)
+  return fit16x9(spot && ids.includes(spot) && ids.length > 1 ? spotLayout(W, H, ids, spot) : gridLayout(W, H, ids))
 }
 const insert = (list, index, id) => [...list.slice(0, index), id, ...list.slice(index)]
 
@@ -348,7 +359,7 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, toasts 
     if (e.altKey) return // Alt+clique e ping na transmissao, nao levanta a carta
     const g = { kind: 'tile', id: tile.id, home: e.currentTarget.getBoundingClientRect(), pointer: e.pointerId, x: e.clientX, y: e.clientY }
     listen(g)
-    g.hold = setTimeout(() => { if (gesture.current === g && !g.copy) lift(g) }, HOLD_MS)
+    g.hold = setTimeout(() => { if (gesture.current === g && !g.copy) lift(g) }, e.pointerType === 'mouse' ? HOLD_MS : HOLD_TOUCH_MS)
   }
 
   const audienceEl = !!audience.length && <div className="table-audience" aria-label="Na sala">

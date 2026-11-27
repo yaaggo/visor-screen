@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-26, versao 1.16.4 (token renovado com a aba oculta ou o app minimizado; login com mensagens claras).
+Ultima atualizacao: 2026-11-26, versao 1.17.0 (experiencia no celular: tela cheia, controles por toque, gaveta, chat inferior, camera como fonte).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -251,6 +251,33 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.17.0 — celular (2026-11-26). So commit e push (web publica pela Vercel); sem instalador, release ou canal de update:
+
+- Tela cheia (`src/lib/fullscreen.js`, testes em `tests/fullscreen.test.js`): antes so `box.requestFullscreen()`, que o
+  iPhone nao tem (so `video.webkitEnterFullscreen`) e cuja recusa virava erro solto. Agora: palco inteiro (Android, iPad,
+  desktop; trava paisagem com `screen.orientation.lock` se o video for largo e o ponteiro for de toque) -> player nativo do
+  `<video>` (iPhone) -> `video.requestFullscreen`. Estado por `fullscreenchange`/`webkitfullscreenchange` e
+  `webkitbegin/endfullscreen`. No painel embutido do Claude a promessa de fullscreen fica pendente (janela nao desenhada):
+  confirmar em aparelho real.
+- Palco no toque: os controles so apareciam com hover. Um toque mostra/esconde (somem em 3,5 s), dois toques = tela cheia;
+  escondidos nao recebem toque; botoes de 36 px. `:hover` do palco so em `(hover: hover)`. Em tela cheia o volume e o chip
+  de qualidade voltam (as container queries da carta os escondiam). Wake Lock da tela enquanto assiste.
+- Mesa: celula mais alta que 16:9 vira quadro 16:9 centralizado (`fit16x9` em CardTable; antes, em retrato, a carta tinha
+  343x670 com o video numa faixa). Segurar para levantar no toque = 480 ms (mouse segue 260).
+- Lateral no celular (<= 860 px): gaveta por cima com fundo escurecido (`.shell-scrim`), fecha ao tocar fora e ao trocar de
+  canal/servidor. Antes empurrava a sala para 155 px de largura.
+- Chat da call (<= 600 px): painel inferior (56dvh) com a mesa visivel em cima; comeca fechado e a escolha fica em
+  `visor.chatOpenMobile` (separada do computador).
+- Transmitir: sem `getDisplayMedia` (Android/iPhone) some o seletor Tela/Janela e a fonte e a camera; padrao 720p30 4 Mbps.
+- Tooltips nao abrem mais pelo foco que vem de um toque (ficavam presos). `viewport-fit=cover`, `100dvh`, areas seguras
+  (notch, barra de gestos) na barra, deck, tabuleiro, mao e login; campos com 16 px (iOS sem zoom ao focar); deitado com
+  pouca altura a barra fica com 44 px e a mesa vai ate as bordas. Entrada na mesa pelo tabuleiro tem limite de 1,4 s
+  (se a animacao nao terminar, a sala aparece mesmo assim; antes `body.board-entering` podia ficar preso).
+- QA: Vite dev em 375x812 e 812x375 com toque emulado, Supabase real e conta/servidor temporarios (apagados); transmissao
+  sintetica por canvas via `window.__room.startShare`. Desktop 1280x800 conferido sem mudanca. `npm test` passou (22 unit +
+  UI). Nao verificado: iPhone e Android fisicos (tela cheia, rotacao, Wake Lock, teclado sobre o chat), camera do celular
+  transmitindo.
 
 1.16.4 — sessao renovada com a aba oculta (2026-11-26):
 

@@ -995,7 +995,13 @@ button:disabled {
   translate: 0 -6px;
   transition: opacity var(--t-med) var(--out), translate var(--t-med) var(--spring);
 }
-.stage:hover .stage-hud {
+@media (hover: hover) {
+  .stage:hover .stage-hud {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+.stage.show-hud .stage-hud {
   opacity: 1;
   translate: 0 0;
 }
@@ -2372,3 +2378,62 @@ img { -webkit-user-drag:none; user-select:none }
 .join-fail { position: fixed; top: 68px; z-index: 1000 }
 @keyframes clip-toast { 0% { opacity: 0; transform: translateY(-8px) scale(.94) } 10%, 82% { opacity: 1; transform: none } 100% { opacity: 0; transform: translateY(-4px) } }
 @media (prefers-reduced-motion: reduce) { .clip-toast { animation-name: ping-label } }
+
+/* ---------- Celular (toque, telas estreitas, notch) ---------- */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100% }
+html, body, #root { height: 100dvh }
+button, a, input, [role=button] { touch-action: manipulation; -webkit-tap-highlight-color: transparent }
+/* arrastar transmissao/carta com o dedo: o navegador nao toma o gesto para rolar ou dar zoom */
+.table-card, .hand-card, .seat-card, .deck-card { touch-action: none; -webkit-tap-highlight-color: transparent }
+body { overscroll-behavior: none }
+/* palco: controles por toque (escondidos nao recebem o toque; o primeiro toque so os mostra) */
+@media (hover: none) {
+  .stage:not(.show-hud) .stage-hud:not(.is-pinned) { pointer-events: none }
+  .stage-hud .hud-btn { min-width: 36px; min-height: 36px }
+  .stage-hud { gap: 6px }
+}
+/* tela cheia: video inteiro em fundo preto, controles fora do notch e da barra de gestos */
+.stage:fullscreen, .stage:-webkit-full-screen { background: #000; border-radius: 0; border: 0; width: 100%; height: 100% }
+.stage:fullscreen video, .stage:-webkit-full-screen video { object-fit: contain; width: 100%; height: 100% }
+.stage:fullscreen .stage-hud, .stage:-webkit-full-screen .stage-hud {
+  top: max(14px, env(safe-area-inset-top)); left: max(14px, env(safe-area-inset-left)); right: max(14px, env(safe-area-inset-right)) }
+.table-card .stage.is-full .stage-hud .hud-chip.mono { display: inline-flex }
+.table-card .stage.is-full .hud-volume input { display: inline-block }
+.table-card .stage.is-full .hud-vol-pct { display: inline }
+@media (hover: none) {
+  .stage.show-hud .hud-range { width: 84px; opacity: 1 }
+  .stage.show-hud .hud-vol-pct { width: 34px; opacity: 1 }
+}
+.shell-scrim { display: none }
+@media (max-width: 860px) {
+  /* lateral vira gaveta por cima da sala (antes empurrava e espremia a mesa) */
+  .shell, .shell.is-collapsed { grid-template-columns: 0 minmax(0, 1fr) }
+  .shell > .main { grid-column: -2 / -1 }
+  .shell > .sidebar { position: fixed; z-index: 60; left: 0; top: 0; bottom: 0; height: auto; box-sizing: border-box; width: min(290px, 84vw);
+    background: var(--bg); border-right: 1px solid var(--line-strong); box-shadow: 18px 0 50px #000a;
+    padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);
+    translate: -105% 0; visibility: hidden; transition: translate .42s var(--spring), visibility 0s .42s }
+  .shell.is-collapsed > .sidebar { translate: 0 0; visibility: visible; transition: translate .42s var(--spring) }
+  .shell.is-collapsed .shell-scrim { display: block; position: fixed; inset: 0; z-index: 59; border: 0; background: #0009; animation: scrim-in .25s ease-out both }
+  .board-revealing .shell > .sidebar { animation: none }
+}
+@keyframes scrim-in { from { opacity: 0 } }
+@media (max-width: 600px) {
+  /* chat da call: painel inferior com a transmissao visivel em cima */
+  .screen.with-chat .screen-chat { left: 8px; right: 8px; top: auto; width: auto; margin: 0; z-index: 20;
+    bottom: calc(8px + env(safe-area-inset-bottom)); height: min(56dvh, 460px); border-radius: 20px }
+  .screen.with-chat .chat-toggle { bottom: calc(min(56dvh, 460px) + 18px + env(safe-area-inset-bottom)) }
+  .with-table .chat-toggle { bottom: calc(18px + env(safe-area-inset-bottom)); right: 14px }
+  /* campos com 16px: o iOS nao da zoom ao focar */
+  input, textarea, select { font-size: 16px }
+  .main-head { padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)) }
+}
+.main-head { padding-top: env(safe-area-inset-top); height: calc(56px + env(safe-area-inset-top)) }
+.hub-titlebar { padding-top:env(safe-area-inset-top); height:calc(56px + env(safe-area-inset-top)) }
+.login { padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left) }
+/* celular deitado: barra mais baixa e mesa ate as bordas (sobram poucos px de altura) */
+@media (max-height: 500px) and (orientation: landscape) and (pointer: coarse) {
+  .main-head { height: calc(44px + env(safe-area-inset-top)) }
+  .card-table { inset: 6px max(6px, env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left)) }
+  .card-table.no-hand .table-felt { margin-bottom: 6px }
+}
