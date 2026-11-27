@@ -252,7 +252,7 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 
 ## Estado atual
 
-1.17.0 — celular (2026-11-26). So commit e push (web publica pela Vercel); sem instalador, release ou canal de update:
+1.17.0 — celular (2026-11-26). Release v1.17.0 no GitHub e no canal de update (2026-11-27); nao instalado no PC do usuario:
 
 - Tela cheia (`src/lib/fullscreen.js`, testes em `tests/fullscreen.test.js`): antes so `box.requestFullscreen()`, que o
   iPhone nao tem (so `video.webkitEnterFullscreen`) e cuja recusa virava erro solto. Agora: palco inteiro (Android, iPad,
