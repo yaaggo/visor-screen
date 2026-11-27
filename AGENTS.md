@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-26, versao 1.17.0 (experiencia no celular: tela cheia, controles por toque, gaveta, chat inferior, camera como fonte).
+Ultima atualizacao: 2026-11-27, versao 1.17.1 (carta Transmitir menor e recolhida sob o video; deck com ate 7 servidores por pagina).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -251,6 +251,16 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.17.1 — mao da sala e deck (2026-11-27):
+
+- Carta Transmitir (e a mao da sala) cobria o video: `--hw` passou de clamp(70px,13cqh,92px) para clamp(58px,10cqh,78px).
+  Com transmissoes na mesa e mouse (`hover:hover`), a mao fica recolhida 52% abaixo e sobe com hover, foco por teclado,
+  arraste ou alvo; a mesa ganha essa altura. No toque continua inteira.
+- Deck: servidores por pagina = 3 ate 600 px, 5 ate 900 px e 7 acima (`usePerPage` em ServerHub). A inclinacao e a queda
+  do leque dividem 36deg/36px pelo numero de vaos (antes 12deg por carta, que com 8 cartas daria +-42deg).
+- QA: DeckLab em 1024 (8 cartas, leque de 124 a 900 px) e 760 (6 cartas); TableLab com uma transmissao: mao recolhida
+  rente a borda da mesa, sobe com is-settling. Nao visto na janela do app instalado (acesso de tela recusado).
 
 1.17.0 — celular (2026-11-26). Release v1.17.0 no GitHub e no canal de update (2026-11-27); nao instalado no PC do usuario:
 

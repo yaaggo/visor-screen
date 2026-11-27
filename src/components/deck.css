@@ -8,7 +8,7 @@
   rotate:calc(var(--d)*3deg); transform:none;
   /* --part: espaco aberto em volta da carta em foco (fanPhysics.js), rapido e sem mola */
   transition:translate 1s var(--fan),rotate 1s var(--fan),scale 1s var(--scale),transform 1s var(--lift),left .2s cubic-bezier(.2,.8,.25,1) }
-.deck-hand:hover .deck-card,.deck-hand:focus-within .deck-card,.deck-hand.is-settling .deck-card { translate:calc(var(--d)*var(--spread)) calc(var(--abs)*12px); rotate:calc(var(--d)*12deg) }
+.deck-hand:hover .deck-card,.deck-hand:focus-within .deck-card,.deck-hand.is-settling .deck-card { translate:calc(var(--d)*var(--spread)) calc(var(--abs)*min(12px,36px/var(--gaps))); rotate:calc(var(--d)*min(12deg,36deg/var(--gaps))) }
 .deck-card:hover,.deck-card:focus-visible { transform:translateY(-22px); scale:1.06 }
 .deck-card:active { cursor:grabbing }
 .deck-art { flex:1; min-height:0; width:100%; display:grid; place-items:center; overflow:hidden; border-radius:var(--r-md);

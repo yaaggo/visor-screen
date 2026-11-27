@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { ArrowLeft, ArrowRight, Cast, ChevronLeft, ChevronRight, Clapperboard, DoorOpen, Layers, LogIn, LogOut, Plus, Radio, Trash2, UserRound, Users, X } from 'lucide-react'
 import { ServerFace, serverInitials, serverPhotoUrl, usePopover } from './ui.jsx'
@@ -24,7 +24,18 @@ function spring(k, damping) {
 }
 export const springs = { '--fan':spring(220,18), '--lift':spring(420,20), '--scale':spring(420,22), '--settle':spring(280,22) }
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches
-const serversPerPage = 3
+// Servidores por pagina do deck (mais a carta +): 3 no celular (o layout estreito cabe 4 cartas),
+// 5 em janelas medias e 7 no computador.
+const perPageFor = w => w <= 600 ? 3 : w <= 900 ? 5 : 7
+function usePerPage() {
+  const [n, setN] = useState(() => perPageFor(window.innerWidth))
+  useEffect(() => {
+    const on = () => setN(perPageFor(window.innerWidth))
+    window.addEventListener('resize', on)
+    return () => window.removeEventListener('resize', on)
+  }, [])
+  return n
+}
 
 function Face({server, live}) {
   return <>
@@ -37,6 +48,7 @@ function Face({server, live}) {
 // activity (opcional): { [serverId]: { people, live } } vindo da presenca; acende cartas, aneis e contagens.
 export default function ServerHub({ servers, ownerId, onDelete, onLeave, returningId, onOpen, onSubmit, editProfile, logout, call, onResume, onHangup, activity, clipsRoute = '#/clips' }) {
   const account = usePopover()
+  const serversPerPage = usePerPage()
   // A call em andamento fica no centro do deck, fora da mao.
   const inHand = list => list.filter(s => s.id !== call?.server?.id)
   const [page, setPage] = useState(() => Math.max(0, Math.floor(inHand(servers).findIndex(s => s.id === returningId)/serversPerPage)))
