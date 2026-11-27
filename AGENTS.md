@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-26, versao 1.16.3 (login: mensagens claras para nome em uso, rede e limite; nome sem acento).
+Ultima atualizacao: 2026-11-26, versao 1.16.4 (token renovado com a aba oculta ou o app minimizado; login com mensagens claras).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -252,6 +252,18 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 
 ## Estado atual
 
+1.16.4 — sessao renovada com a aba oculta (2026-11-26):
+
+- Logs: um usuario recebeu 401 em `realtime/v1/api/broadcast` exatamente 1 h depois do cadastro, ate a aba voltar e renovar.
+  Causa: o supabase-js 2.119 (`_onVisibilityChanged`) para o temporizador de renovacao quando a pagina fica oculta; vale
+  para aba em segundo plano e para o app desktop minimizado durante o jogo.
+- `src/lib/keepSession.js` (ligado em `lib/supabase.js`): com a pagina oculta, `getSession()` a cada 30 s; ele renova quando
+  faltam menos de 90 s (`EXPIRY_MARGIN_MS`). Abas ocultas ha mais de 5 min ficam com temporizadores de 1 por minuto, ainda
+  dentro da margem. Visivel, o supabase-js retoma o proprio temporizador. Testes em `tests/keepSession.test.js`.
+- QA (Vite dev, Supabase real, conta temporaria apagada): pagina marcada como oculta, temporizador do supabase-js `null`,
+  token salvo vencendo em 60 s: em 36 s houve 1 refresh e token novo valido por 60 min. Ao voltar visivel o temporizador
+  da biblioteca voltou. Nao medido: aba realmente oculta por mais de 1 h e app minimizado no Electron instalado.
+
 1.16.3 — login e cadastro (2026-11-26):
 
 - Relato: pessoas novas "nao conseguiam criar a conta, como se ja existisse". Logs do Auth (22 a 27/11): todo cadastro de nome
@@ -266,8 +278,6 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Nome: acentos viram letra simples ao digitar (`joão` -> `joao`); simbolos mostram "Só letras, números, _ . -" no rotulo
   (antes o botao so ficava desativado). "Mínimo 2 letras" aparece depois de comecar a senha. Trava por ref contra Enter +
   clique simultaneos (dois cadastros paralelos davam "ja existe" no segundo).
-- Visto nos logs, nao alterado: aba escondida por mais de 1 h deixa o token vencer (o supabase-js pausa a renovacao com a aba
-  oculta); broadcasts dao 401 ate a aba voltar e renovar.
 - QA: Vite dev com Supabase real e contas temporarias (apagadas): conta nova entra no deck; mesmo nome com outra caixa e senha
   errada mostra a mensagem nova; nome com acento/simbolo. `npm test` completo passou.
 
