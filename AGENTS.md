@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-27, versao 1.17.1 (carta Transmitir menor e recolhida sob o video; deck com ate 7 servidores por pagina).
+Ultima atualizacao: 2026-11-27, versao 1.17.2 (mao recolhida sobe menos e tem area de hover estavel).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -251,6 +251,14 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.17.2 — mao recolhida sem pular (2026-11-27):
+
+- Relato: com o mouse baixo, a mao subia, saia de baixo do ponteiro, descia e voltava (e subia demais). Agora recolhe 38%
+  (sobe ~46 px) e `.hand::after` (z-index -1, atras das cartas) e uma area de hover parada que cobre a mao e o trecho
+  abaixo dela ate o rodape. Mesa com margem `hh*.6 + 12px`: a carta recolhida comeca logo abaixo do video.
+- QA: TableLab 1 transmissao, janela 837 px: recolhida 753-863 (felt termina em 746); erguida 707-817; ponto no rodape
+  (835) cai em `.hand` com ela erguida.
 
 1.17.1 — mao da sala e deck (2026-11-27):
 

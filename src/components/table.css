@@ -57,10 +57,13 @@
 
 /* mao */
 /* Com transmissoes na mesa, a mao fica recolhida abaixo do video (so o topo aparece) e sobe ao passar o mouse,
-   ao focar ou ao arrastar algo ate ela. */
+   ao focar ou ao arrastar algo ate ela. O ::after e a area de hover: cobre a mao e o trecho abaixo dela, entao
+   quando a mao sobe o mouse continua dentro e ela nao fica subindo e descendo. */
 @media (hover:hover) {
-.card-table:has(.table-felt:not(.is-empty)) .table-felt { margin-bottom:calc(var(--hh)*.42 + 12px) }
-.card-table:has(.table-felt:not(.is-empty)) .hand { translate:0 52%; transition:translate .32s var(--settle,cubic-bezier(.2,.8,.2,1)) }
+.card-table:has(.table-felt:not(.is-empty)) .table-felt { margin-bottom:calc(var(--hh)*.6 + 12px) }
+.card-table:has(.table-felt:not(.is-empty)) .hand { translate:0 38%; transition:translate .28s var(--settle,cubic-bezier(.2,.8,.2,1)) }
+.card-table:has(.table-felt:not(.is-empty)) .hand::after { content:""; position:absolute; z-index:-1; top:-6px; bottom:calc(var(--hh)*-.5 - 16px);
+  left:calc(var(--hw)*-.5 - (var(--n) - 1)*var(--spread)*.5 - 16px); right:calc(var(--hw)*-.5 - (var(--n) - 1)*var(--spread)*.5 - 16px) }
 .card-table:has(.table-felt:not(.is-empty)) .hand:is(:hover,:has(:focus-visible),.is-target,.is-settling),
 .card-table.is-dragging .hand { translate:0 0 }
 }
