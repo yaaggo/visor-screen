@@ -81,7 +81,7 @@ function useStreamAudio(stream, volume, muted) {
 // mode: 'card' (sendo arrastada, do tamanho de uma carta da mao) ou 'player'.
 // cardSize/ratio: tamanhos da janela; onMode: pede a troca de modo; onGhost({x,y} | null): cursor sobre o app
 // (coordenadas da pagina principal) enquanto arrasta como carta; onDropInside({x,y}): soltou sobre o app.
-export default function MiniPlayer({ win, stream, name, local, mode = 'player', ratio = 16 / 9, cardSize, onMode, onGhost, onDropInside, onBack, onClose }) {
+export default function MiniPlayer({ win, stream, name, local, mirror = false, mode = 'player', ratio = 16 / 9, cardSize, onMode, onGhost, onDropInside, onBack, onClose }) {
   const video = useRef(null)
   const card = useRef(null)
   const [muted, setMuted] = useState(false)
@@ -179,11 +179,11 @@ export default function MiniPlayer({ win, stream, name, local, mode = 'player', 
     node.addEventListener('pointerup', up)
   }
 
-  const label = local ? 'você' : name
+  const label = local && !mirror ? 'você' : name
   const view = <div ref={card} className={'mini ' + (win ? 'is-window' : 'is-floating') + ' is-' + mode}
     onPointerDown={desk ? deskDrag : win ? undefined : floatDrag} onWheel={wheel} onDoubleClick={e => { if (!e.target.closest('button')) onBack() }}
     style={!win && pos ? { left: pos.left, top: pos.top, right: 'auto', bottom: 'auto' } : undefined}>
-    <video ref={video} autoPlay playsInline muted />
+    <video ref={video} autoPlay playsInline muted style={mirror ? { transform: 'scaleX(-1)' } : undefined} />
     <span className="mini-caption"><i className={'live-dot' + (local ? ' is-local' : '')}/><span>{label}</span></span>
     <div className="mini-hud">
       <span className="mini-chip"><i className={'live-dot' + (local ? ' is-local' : '')}/>{label}</span>

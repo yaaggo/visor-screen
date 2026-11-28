@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Activity, Camera, CameraOff, Check, ChevronRight, Clapperboard, Eye, Maximize, MessageSquare, Minimize, Minus, Monitor, SquareArrowOutUpRight, MonitorUp, Smartphone, Square, Volume2, VolumeX, X } from 'lucide-react'
+import { Activity, Camera, Clapperboard, Maximize, MessageSquare, Minimize, Monitor, MonitorUp, Volume2, VolumeX } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { deviceKind, endpointId } from '../lib/presence.js'
 import { ScreenRoom } from '../lib/screen.js'
@@ -8,7 +8,7 @@ import { fmtMbps, getPreset } from '../lib/quality.js'
 import { desktop } from '../lib/env.js'
 import { captureDesktop, captureDevice, captureWeb } from '../lib/sources.js'
 import { Avatar, IconButton } from './ui.jsx'
-import SharePanel, { exeKey, pref, screenCaptureSupported, useCameras, useShareConfig } from './SharePanel.jsx'
+import SharePanel, { exeKey, pref, screenCaptureSupported, useShareConfig } from './SharePanel.jsx'
 import CardTable from './CardTable.jsx'
 import MiniPlayer, { miniDesktop, miniPlayerSize, openMiniWindow, prepareMini } from './MiniPlayer.jsx'
 import { ReplayBuffer, replaySupported } from '../lib/replay.js'
@@ -98,20 +98,20 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
   const [error, setError] = useState(false)
   const [nativeCapture, setNativeCapture] = useState(false)
   const [panelOpen, setPanelOpen] = useState(false) // painel de transmitir (a carta + aberta)
-  const [panelMode, setPanelMode] = useState('screen') // 'screen' | 'device' (comecar) | 'settings' (Ajustes ao vivo) | 'camera' (camera junto com a tela)
-  const [camOut, setCamOut] = useState(() => new Set()) // ids cuja camera esta na mesa como carta propria
-  // Parar desliga tambem a camera que ia junto (a proxima transmissao comeca sem ela).
-  const stopShare = () => { roomRef.current.stopShare(); captureRef.current = null; update({ camId: null }); play('stop') }
-  const [ownOnTable, setOwnOnTable] = useState(true)
+  const [panelMode, setPanelMode] = useState('screen') // 'screen' | 'device' (comecar tela/camera) | 'settings' (Ajustes da tela ao vivo)
+  // Cartas devolvidas a mao. Chave: '<pessoa>' (tela) ou '<pessoa>:cam' (camera). Tela e camera sao cartas independentes.
+  const [off, setOff] = useState(() => new Set())
+  const stopScreen = () => { roomRef.current.stopScreen(); captureRef.current = null; play('stop') }
+  const stopCamera = () => { roomRef.current.stopCamera(); camCaptureRef.current = null; play('stop') }
+  const camCaptureRef = useRef(null)
   const [pip, setPip] = useState(null) // { id, win } transmissao no miniplayer
   const placedAt = useRef(new Map())
   // Campo ASCII leve no fundo da sala (6 fps parado); para enquanto voce transmite ou com a sala fora da tela.
   const fieldCanvas = useRef(null)
   useAsciiField(fieldCanvas, { light: true, paused: s.sharing || !visible, background: t => t.matches?.('.card-table, .table-felt.is-empty, .table-slot, .hand') })
-  // Camera junto com a tela: abre so enquanto transmite; trocar no painel vale ao vivo, sem reconectar ninguem.
-  const camWanted = s.sharing && cfg.camId && !(cfg.kind === 'device' && cfg.camId === cfg.deviceId) ? cfg.camId : null
-  useEffect(() => { roomRef.current?.setCamera(camWanted) }, [camWanted])
-  const needsAudioApps = cfg.kind !== 'device' && (panelOpen || (s.sharing && cfg.audioMode === 'all' && cfg.exclude.length > 0))
+  const screenKind = cfg.kind === 'device' ? pref.get('visor.screenKind', 'monitor') : cfg.kind
+  useEffect(() => { roomRef.current?.setCamFlip(!!cfg.camFlip) }, [cfg.camFlip])
+  const needsAudioApps = panelMode !== 'device' && (panelOpen || (s.sharing && cfg.audioMode === 'all' && cfg.exclude.length > 0))
   const apps = useAudioApps(needsAudioApps)
   const targetKey = JSON.stringify(audioTargets(cfg, apps))
 
@@ -136,7 +136,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
   const replayOn = desktop && !!window.visor?.clips && !!cfg.replay && s.sharing && !!s.local && replaySupported()
   // O clipe sempre tem som: transmitindo no Mudo (ou sem audio), o replay grava o som do sistema (menos o
   // proprio Visor) num mixer so dele; os espectadores continuam sem audio.
-  const replayOwnAudio = replayOn && (cfg.kind === 'device' ? !s.local?.getAudioTracks().length : cfg.audioMode === 'off')
+  const replayOwnAudio = replayOn && cfg.audioMode === 'off'
   useEffect(() => {
     if (!replayOn) return
     let mixer = null, closed = false
@@ -168,7 +168,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
 
   // Ping na propria transmissao com a previa fora da mesa: ao menos o som avisa quem transmite.
   const ownShown = useRef(true)
-  ownShown.current = s.sharing && ownOnTable
+  ownShown.current = !!s.local && !off.has(endpointId)
   useEffect(() => roomRef.current.onPing(p => {
     if (p.stream === endpointId && !p.mine && !ownShown.current) play('drop', { gain: .6 })
   }), [channel.id])
@@ -212,7 +212,9 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
     }
   }, [hover])
 
-  useEffect(() => { if (s.sharing) setOwnOnTable(true) }, [s.sharing])
+  // Fonte propria que liga vai para a mesa.
+  useEffect(() => { if (s.local) setOff(prev => { const n = new Set(prev); n.delete(endpointId); return n }) }, [!!s.local])
+  useEffect(() => { if (s.camLocal) setOff(prev => { const n = new Set(prev); n.delete(endpointId + ':cam'); return n }) }, [!!s.camLocal])
 
   // Sons da sala: entrou, saiu, comecou a transmitir. Ignora a primeira leitura ao entrar.
   const roster = useRef(null)
@@ -249,10 +251,13 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
     if (s.sharing) captureRef.current?.mixer?.set(JSON.parse(targetKey))
   }, [targetKey, s.sharing])
   useEffect(() => {
-    if (s.sharing) captureRef.current?.setAudioGain?.(cfg.audioGain ?? 1.5)
+    if (!s.sharing) return
+    captureRef.current?.setAudioGain?.(cfg.audioGain ?? 1.5)
+    camCaptureRef.current?.setAudioGain?.(cfg.audioGain ?? 1.5)
   }, [cfg.audioGain, s.sharing])
 
-  const start = async () => {
+  // mode 'device': camera/placa (fonte camera); senao tela/janela (fonte tela). As duas podem ficar no ar juntas.
+  const start = async (mode) => {
     if (starting.current) return false
     starting.current = true
     const room = roomRef.current
@@ -260,25 +265,30 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
     const gain = cfg.audioGain ?? 1.5
     try {
       let cap
-      if (cfg.kind === 'device') {
+      if (mode === 'device') {
         if (!cfg.deviceId) throw new Error('device')
-        cap = await captureDevice(cfg.deviceId, preset, cfg.deviceAudioId, gain)
+        // Ao lado da tela a camera abre em 720p30 (a qualidade escolhida fica com a tela).
+        cap = await captureDevice(cfg.deviceId, room.local ? getPreset('720p30') : preset, cfg.deviceAudioId, gain)
+        if (!(await room.startCamera(cap, cfg.presetId, cfg.bitrate))) return false
+        play('live')
+        camCaptureRef.current = cap
+        return true
       } else if (desktop) {
         if (!cfg.sourceId) throw new Error('source')
         const engine = nativeCapture && cfg.engine === 'rust' ? 'rust' : 'chromium'
         const hasNativeAudio = await window.visor.audioSupported().catch(() => false)
         cap = await captureDesktop(cfg.sourceId, preset, hasNativeAudio ? audioTargets(cfg, apps) : [], engine, gain)
       } else {
-        cap = await captureWeb(cfg.kind, preset, cfg.audioMode === 'all', gain)
+        cap = await captureWeb(screenKind, preset, cfg.audioMode === 'all', gain)
       }
-      if (!(await room.startShare(cap, cfg.presetId, cfg.bitrate))) return false
+      if (!(await room.startScreen(cap, cfg.presetId, cfg.bitrate))) return false
       play('live')
       captureRef.current = cap
       return true
     } catch (err) {
       if (err?.name !== 'NotAllowedError' && err?.name !== 'AbortError') {
         console.warn('[visor] captura', err)
-        setError(desktop && cfg.engine === 'rust' && cfg.kind !== 'device'
+        setError(desktop && cfg.engine === 'rust' && mode !== 'device'
           ? 'Falha na captura Rust. Confira a fonte ou escolha Chromium em Motor de captura.'
           : 'Falha na captura. Selecione a fonte novamente.')
       }
@@ -289,30 +299,56 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
   }
 
   const inputs = s.inputs ?? []
-  // Camera de quem transmite: mini camera sobre a tela (padrao) ou carta propria na mesa (id '<pessoa>:cam').
-  // A carta da camera fica na mao enquanto nao esta na mesa; soltar na mao volta a mini camera.
-  const camId = id => id + ':cam'
+  // Tela e camera de cada pessoa sao cartas independentes: tela = '<pessoa>', camera = '<pessoa>:cam'.
+  // Na mesa ou na mao; arrastar para fora vira miniplayer; soltar o miniplayer no app devolve a carta.
+  const camKey = id => id + ':cam'
   const camOf = id => id.endsWith(':cam') ? id.slice(0, -4) : null
-  const screenTiles = inputs.filter(input => !input.preview)
-  if (s.sharing && ownOnTable) screenTiles.unshift({ id: endpointId, stream: s.local, cam: s.camLocal })
-  const ownCam = s.sharing ? s.camLocal : null
-  const cams = [
-    ...(ownCam ? [{ id: endpointId, stream: ownCam }] : []),
-    ...inputs.filter(v => !v.preview && v.cam).map(v => ({ id: v.id, stream: v.cam })),
-  ]
-  const allTiles = screenTiles.flatMap(t => {
-    if (!camOut.has(t.id) || !t.cam) return [t]
-    return [{ ...t, cam: null }, { id: camId(t.id), camOf: t.id, stream: t.cam }]
-  })
-  // Camera propria na mesa mesmo com a propria tela fora dela
-  if (ownCam && camOut.has(endpointId) && !allTiles.some(t => t.id === camId(endpointId))) allTiles.push({ id: camId(endpointId), camOf: endpointId, stream: ownCam })
-  const camHand = cams.filter(c => !camOut.has(c.id))
+  const watched = inputs.filter(input => !input.preview)
+  const allTiles = []
+  if (s.local && !off.has(endpointId)) allTiles.push({ id: endpointId, stream: s.local })
+  if (s.camLocal && !off.has(camKey(endpointId))) allTiles.push({ id: camKey(endpointId), camOf: endpointId, stream: s.camLocal, mirror: !!cfg.camFlip })
+  for (const v of watched) {
+    if (v.screen && !off.has(v.id)) allTiles.push(v)
+    if (v.cam && !off.has(camKey(v.id))) allTiles.push({ id: camKey(v.id), camOf: v.id, stream: v.cam, mirror: v.camFlip })
+  }
+  const slotsOf = id => {
+    if (id === endpointId) return { screen: !!s.local, cam: !!s.camLocal }
+    const v = watched.find(w => w.id === id)
+    return v ? { screen: v.screen, cam: !!v.cam } : null
+  }
+  // Pessoa que deixou de transmitir (ou parou de ser assistida): esquece as cartas dela que estavam na mao.
+  const alive = [endpointId, ...watched.map(v => v.id)].join(',')
   useEffect(() => {
-    // Camera desligada (ou a pessoa saiu): a carta da camera some da mesa.
-    const on = new Set(cams.map(c => c.id))
-    if ([...camOut].some(id => !on.has(id))) setCamOut(prev => new Set([...prev].filter(id => on.has(id))))
-  }, [cams.map(c => c.id).join(','), camOut])
-  const setCamOnTable = (id, on) => setCamOut(prev => { const next = new Set(prev); if (on) next.add(id); else next.delete(id); return next })
+    const keep = new Set(alive.split(','))
+    setOff(prev => [...prev].every(k => keep.has(camOf(k) ?? k)) ? prev : new Set([...prev].filter(k => keep.has(camOf(k) ?? k))))
+  }, [alive])
+  const putBack = key => {
+    const pid = camOf(key) ?? key
+    setOff(prev => {
+      const next = new Set(prev)
+      next.add(key)
+      // Nenhuma carta dessa pessoa na mesa: para de receber (a camera e a tela voltam como cartas da pessoa na mao).
+      const slots = pid !== endpointId && slotsOf(pid)
+      if (slots && (!slots.screen || next.has(pid)) && (!slots.cam || next.has(camKey(pid)))) {
+        roomRef.current.stopWatching(pid)
+        next.delete(pid)
+        next.delete(camKey(pid))
+      }
+      return next
+    })
+  }
+  const putOnTable = key => {
+    const pid = camOf(key) ?? key
+    const room = roomRef.current
+    const watching = pid === endpointId || (room.inputs.has(pid) && !room.inputs.get(pid).preview)
+    setOff(prev => {
+      const next = new Set(prev)
+      next.delete(key)
+      if (!watching) next.add(camOf(key) ? pid : camKey(pid)) // so a carta escolhida vai para a mesa
+      return next
+    })
+    if (!watching) room.watch(pid, false, allPeers.find(p => p.id === pid))
+  }
   // Miniplayer: a transmissao sai da mesa mas continua sendo recebida; na mao fica uma carta indicando onde ela esta.
   // pip = { id, win, mode: 'card' | 'player', phase: 'drag' | 'open' }. 'drag': a janela segue o cursor enquanto a
   // carta e arrastada para fora do app (a transmissao ainda e da mesa); 'open': solta fora, virou player.
@@ -329,7 +365,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
     const v = allTiles.find(t => t.id === id)?.stream?.getVideoTracks()[0]?.getSettings()
     return v?.width && v?.height ? v.width / v.height : 16 / 9
   }
-  const nameOf = id => camOf(id) ? nameOf(camOf(id)) : id === endpointId ? 'você' : allPeers.find(p => p.id === id)?.name ?? ''
+  const nameOf = id => camOf(id) ? nameOf(camOf(id)) + ' · câmera' : id === endpointId ? 'você' : allPeers.find(p => p.id === id)?.name ?? ''
   const cardSize = () => { const w = document.querySelector('.hand-card')?.offsetWidth || 84; return { w, h: Math.round(w * 1.34) } }
   // Desktop: a carta saindo pela borda vira a janela do miniplayer sob o cursor (preparada antes, perto da borda).
   async function pipDrag(type, id, info) {
@@ -382,7 +418,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
     setGhost(null)
     if (!p || !pipTile) return
     const where = tableApi.current?.dropGhost(p.id, c.x, c.y, pipTile.stream, nameOf(p.id)) ?? 'table'
-    if (where === 'hand') { if (camOf(p.id)) setCamOnTable(camOf(p.id), false); else if (p.id === endpointId) setOwnOnTable(false); else roomRef.current.stopWatching(p.id) }
+    if (where === 'hand') putBack(p.id)
     else placedAt.current.set(p.id, Date.now())
     setPip(null)
   }
@@ -443,14 +479,19 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
           })}
           hand={[
             ...(pipOpen ? [{ id: pipOpen.id, pip: true, own: pipOpen.id === endpointId, name: pipOpen.id === endpointId ? profile.username : nameOf(pipOpen.id), device: allPeers.find(p => p.id === pipOpen.id)?.device ?? deviceKind }] : []),
-            ...(s.sharing && !ownOnTable ? [{ id: endpointId, own: true, name: profile.username, profileId: profile.id, photo, device: deviceKind }] : []),
-            ...camHand.filter(c => pipOpen?.id !== camId(c.id)).map(c => {
-              const peer = allPeers.find(p => p.id === c.id)
-              return { id: camId(c.id), cam: true, own: c.id === endpointId, name: c.id === endpointId ? profile.username : peer?.name ?? '', peek: c.stream }
+            ...(s.local && off.has(endpointId) ? [{ id: endpointId, own: true, name: profile.username, profileId: profile.id, photo, device: deviceKind }] : []),
+            ...(s.camLocal && off.has(camKey(endpointId)) ? [{ id: camKey(endpointId), own: true, cam: true, mirror: !!cfg.camFlip, name: profile.username, peek: s.camLocal }] : []),
+            ...allPeers.filter(p => p.sharing && p.id !== endpointId).flatMap(p => {
+              const v = watched.find(w => w.id === p.id)
+              const screen = v ? v.screen : p.screen !== false
+              const cam = v ? !!v.cam : !!p.cam
+              const out = []
+              if (screen && (!v || off.has(p.id)) && pipOpen?.id !== p.id)
+                out.push({ ...p, cam: false, mirror: false, peek: hover?.id === p.id ? inputs.find(w => w.id === p.id)?.stream ?? null : null })
+              if (cam && (!v || off.has(camKey(p.id))) && pipOpen?.id !== camKey(p.id))
+                out.push({ id: camKey(p.id), cam: true, mirror: !!v?.camFlip, name: p.name, profileId: p.profileId, photo: p.photo, device: p.device, peek: v?.cam ?? null })
+              return out
             }),
-            ...allPeers.filter(p => p.sharing && p.id !== endpointId && !allTiles.some(t => t.id === p.id)).map(p => ({
-              ...p, peek: hover?.id === p.id ? inputs.find(v => v.id === p.id)?.stream ?? null : null,
-            })),
           ]}
           visible={visible}
           audience={allPeers.filter(p => !p.sharing)}
@@ -459,63 +500,53 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
           adds={[
             // Duas cartas brancas: Tela (tela/janela) e Camera (cameras e placas de captura). A Tela some quando a tela
             // esta no ar; a Camera fica e liga a camera junto com a tela. Transmitindo a propria camera, nenhuma aparece.
-            ...(!s.sharing && screenCaptureSupported() ? [{ key: 'screen', label: 'Tela', icon: <MonitorUp size={22} strokeWidth={1.5}/> }] : []),
-            ...(!s.sharing || cfg.kind !== 'device' ? [{ key: 'camera', label: 'Câmera', icon: <Camera size={22} strokeWidth={1.5}/>, preview: ownCam }] : []),
+            ...(!s.local && screenCaptureSupported() ? [{ key: 'screen', label: 'Tela', icon: <MonitorUp size={22} strokeWidth={1.5}/> }] : []),
+            ...(!s.camLocal ? [{ key: 'camera', label: 'Câmera', icon: <Camera size={22} strokeWidth={1.5}/> }] : []),
           ]}
           shareFrom={panelMode === 'settings' ? null : panelMode === 'device' ? 'camera' : panelMode}
-          onAdd={key => {
-            setError(false)
-            if (key === 'screen') {
-              if (cfg.kind === 'device') update({ kind: pref.get('visor.screenKind', 'monitor'), sourceId: null })
-              setPanelMode('screen')
-            } else if (s.sharing) setPanelMode('camera')
-            else { update({ kind: 'device' }); setPanelMode('device') }
-            setPanelOpen(true)
-          }}
+          onAdd={key => { setError(false); setPanelMode(key === 'screen' ? 'screen' : 'device'); setPanelOpen(true) }}
           shareOpen={panelOpen}
           shareTitle={panelMode === 'settings' ? 'Ajustes' : panelMode === 'screen' ? 'Tela' : 'Câmera'}
           onShareClose={() => setPanelOpen(false)}
           onShareSettings={() => { setPanelMode('settings'); setPanelOpen(true) }}
-          onStopShare={stopShare}
-          onCamOff={() => update({ camId: null })}
-          shareContent={panelMode === 'camera' ? <CameraSheet cfg={cfg} update={update} live={!!ownCam} /> : <>
-            <SharePanel cfg={cfg} update={update} live={s.sharing} open={panelOpen} peers={s.peers} uplink={s.uplink} apps={apps}
-              nativeCapture={nativeCapture} onStart={async () => { setError(false); if (await start()) setPanelOpen(false) }}/>
+          onStopShare={stopScreen}
+          onCamOff={stopCamera}
+          onCamFlip={() => update({ camFlip: !cfg.camFlip })}
+          shareContent={<>
+            <SharePanel cfg={{ ...cfg, kind: panelMode === 'device' ? 'device' : screenKind }} update={update} open={panelOpen} peers={s.peers} uplink={s.uplink} apps={apps}
+              live={panelMode === 'device' ? false : panelMode === 'settings'} side={panelMode === 'device' && !!s.local}
+              nativeCapture={nativeCapture} onStart={async () => { setError(false); if (await start(panelMode)) setPanelOpen(false) }}/>
             {error && <span role="status" className="share-error">{error}</span>}
           </>}
           onPeek={card => { clearTimeout(hoverTimer.current); setHover(card ? { id: card.id, peer: card } : null) }}
           onPlace={id => {
             placedAt.current.set(id, Date.now())
-            if (camOf(id)) { if (pipRef.current?.id === id) setPip(null); setCamOnTable(camOf(id), true); setHover(null); return }
             if (pipRef.current?.id === id) { setPip(null); setHover(null); return } // carta do miniplayer: volta para a mesa
-            if (id === endpointId) setOwnOnTable(true)
-            else roomRef.current.watch(id, false, allPeers.find(p => p.id === id))
+            putOnTable(id)
             setHover(null)
           }}
           onReturn={id => {
             placedAt.current.delete(id)
-            if (camOf(id)) setCamOnTable(camOf(id), false)
-            else if (id === endpointId) setOwnOnTable(false)
-            else roomRef.current.stopWatching(id)
+            putBack(id)
           }}
           onPip={openPip}
           onPipDrag={miniDesktop ? pipDrag : undefined}
           ghost={ghost}
           apiRef={tableApi}
-          renderStage={(tile, tools) => <Stage tools={tools} stream={tile.stream} cam={tile.cam} camOnly={!!tile.camOf} onCamOut={tile.cam ? () => setCamOnTable(tile.id, true) : undefined}
+          renderStage={(tile, tools) => <Stage tools={tools} stream={tile.stream} camOnly={!!tile.camOf} mirror={!!tile.mirror}
             local={tile.own} stats={tile.camOf ? null : tile.stats} room={roomRef.current} streamId={tile.id} replay={tile.own && !tile.camOf && replayOn}
             sendStats={s.sendStats} captureEngine={s.captureEngine} captureStats={s.captureStats}
-            hasAudio={!tile.own && !tile.camOf && !!tile.stream?.getAudioTracks().length} watchingName={tile.name}/>}
+            hasAudio={!tile.own && !!tile.stream?.getAudioTracks().length} watchingName={tile.name}/>}
         />
 
         {clipSaved && <div key={clipSaved.at} className="clip-toast" role="status"><Clapperboard size={15} strokeWidth={1.8}/>Clip salvo<span className="mono">{fmtClip(clipSaved.duration)}</span></div>}
-        {pipTile && <MiniPlayer key={pip.id + (pip.win ? ':w' : ':f')} win={pip.win} stream={pipTile.stream} local={pipTile.id === endpointId}
+        {pipTile && <MiniPlayer key={pip.id + (pip.win ? ':w' : ':f')} win={pip.win} stream={pipTile.stream} local={(pipTile.camOf ?? pipTile.id) === endpointId} mirror={!!pipTile.mirror}
           name={nameOf(pipTile.id)} mode={pip.mode} ratio={ratioOf(pip.id)} cardSize={cardSize()}
           onMode={mode => setPip(p => p && { ...p, mode })}
           onGhost={c => setGhost(c && { id: pip.id, x: c.x, y: c.y })}
           onDropInside={pipDropInside}
           onBack={() => setPip(null)}
-          onClose={() => { if (camOf(pipTile.id)) setCamOnTable(camOf(pipTile.id), false); else if (pipTile.id === endpointId) setOwnOnTable(false); else roomRef.current.stopWatching(pipTile.id); setPip(null) }}/>}
+          onClose={() => { putBack(pipTile.id); setPip(null) }}/>}
         {chatChannel && (
           <IconButton
             label={chat ? 'Fechar chat da chamada' : 'Abrir chat da chamada'}
@@ -549,7 +580,7 @@ function videoFrame(video) {
 
 const fmtClip = s => Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0')
 
-export function Stage({ tools, stream, cam, camOnly = false, onCamOut, local, stats, sendStats, captureEngine, captureStats, watchingName, hasAudio, room, streamId, replay }) {
+export function Stage({ tools, stream, camOnly = false, mirror = false, local, stats, sendStats, captureEngine, captureStats, watchingName, hasAudio, room, streamId, replay }) {
   const [diag, setDiag] = useState(() => pref.get('visor.diag', false))
   const video = useRef(null)
   const box = useRef(null)
@@ -712,11 +743,10 @@ export function Stage({ tools, stream, cam, camOnly = false, onCamOut, local, st
   const volPct = Math.round((muted ? 0 : volume) * 100)
 
   return (
-    <div ref={box} className={`stage ${stream ? 'has-stream' : ''} ${camOnly ? 'is-cam' : ''} ${camOnly && local ? 'is-mirror' : ''} ${hud ? 'show-hud' : ''} ${full ? 'is-full' : ''}`}
+    <div ref={box} className={`stage ${stream ? 'has-stream' : ''} ${camOnly ? 'is-cam' : ''} ${mirror ? 'is-mirror' : ''} ${hud ? 'show-hud' : ''} ${full ? 'is-full' : ''}`}
       onDoubleClick={e => stream && !e.altKey && lastPointer.current === 'mouse' && toggleFull()}
       onPointerUp={tap} onPointerDown={pingAt} onPointerMove={aim} onPointerLeave={() => box.current?.classList.remove('is-aiming')}>
       <video ref={video} autoPlay={!local} playsInline muted />
-      {stream && cam && <CamBubble stream={cam} local={local} onOut={onCamOut} />}
       {!!pings.length && <div className="stage-pings" aria-hidden>
         {pings.map(p => <span key={p.key} className={'stage-ping' + (p.mine ? ' is-mine' : '')} style={{ left: p.left, top: p.top }}>
           <i/><i/><b>{p.mine ? 'você' : p.name}</b></span>)}
@@ -896,112 +926,4 @@ function Diagnostics({ local, stats, sendStats, captureEngine, captureStats }) {
 
 // Ilha que se expande do botao de transmitir (conceito "Morph island")
 
-// Camera de quem transmite sobre a tela. Fica num canto (o mesmo para todas as transmissoes, salvo em
-// visor.camCorner); arrastar leva ao canto mais proximo; o botao recolhe numa pilula e devolve. Some em telas
-// muito pequenas (carta pequena na mesa) por container query.
-const CORNERS = ['tl', 'tr', 'bl', 'br']
-function CamBubble({ stream, local, onOut }) {
-  const video = useRef(null)
-  const el = useRef(null)
-  const [corner, setCorner] = useState(() => CORNERS.includes(pref.get('visor.camCorner', 'br')) ? pref.get('visor.camCorner', 'br') : 'br')
-  const [hidden, setHidden] = useState(false)
-  const [drag, setDrag] = useState(null)
-  const [live, setLive] = useState(false)
-  useEffect(() => {
-    const v = video.current
-    if (!v) return
-    if (v.srcObject !== stream) v.srcObject = stream
-    v.play?.().catch(() => {})
-    const [t] = stream.getVideoTracks()
-    // So aparece com quadros chegando (a trilha existe desde o inicio, vazia enquanto a camera esta desligada).
-    const sync = () => setLive(!!t && !t.muted && t.readyState === 'live')
-    const ready = () => setLive(true)
-    sync()
-    t?.addEventListener('mute', sync)
-    t?.addEventListener('unmute', sync)
-    t?.addEventListener('ended', sync)
-    v.addEventListener('loadeddata', ready)
-    return () => {
-      t?.removeEventListener('mute', sync)
-      t?.removeEventListener('unmute', sync)
-      t?.removeEventListener('ended', sync)
-      v.removeEventListener('loadeddata', ready)
-    }
-  }, [stream])
-  const dragRef = useRef(null) // estado do arraste lido nos eventos (o setState so redesenha)
-  const down = (e) => {
-    e.stopPropagation() // nao levanta a carta da mesa nem conta como toque no palco
-    if (e.button !== 0 || e.target.closest('button')) return
-    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* ponteiro ja solto */ }
-    dragRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY, dx: 0, dy: 0 }
-    setDrag(dragRef.current)
-  }
-  const move = (e) => {
-    const d = dragRef.current
-    if (!d || e.pointerId !== d.id) return
-    e.stopPropagation()
-    dragRef.current = { ...d, dx: e.clientX - d.x, dy: e.clientY - d.y }
-    setDrag(dragRef.current)
-  }
-  const up = (e) => {
-    const d = dragRef.current
-    if (!d || e.pointerId !== d.id) return
-    e.stopPropagation()
-    dragRef.current = null
-    const box = el.current?.parentElement?.getBoundingClientRect()
-    const me = el.current?.getBoundingClientRect()
-    if (box && me && Math.hypot(d.dx, d.dy) > 6) {
-      // o retangulo medido ja inclui o deslocamento do arraste (translate)
-      const cx = me.left + me.width / 2, cy = me.top + me.height / 2
-      const next = (cy < box.top + box.height / 2 ? 't' : 'b') + (cx < box.left + box.width / 2 ? 'l' : 'r')
-      setCorner(next)
-      pref.set('visor.camCorner', next)
-    }
-    setDrag(null)
-  }
-  return (
-    <div ref={el} className={`cam-bubble at-${corner} ${hidden ? 'is-hidden' : ''} ${live ? 'is-live' : ''} ${drag ? 'is-dragging' : ''} ${local ? 'is-local' : ''}`}
-      style={drag ? { translate: `${drag.dx}px ${drag.dy}px` } : undefined}
-      onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
-      onDoubleClick={e => e.stopPropagation()}>
-      <video ref={video} autoPlay playsInline muted />
-      {onOut && !hidden && <button type="button" className="cam-toggle cam-out" aria-label="Câmera na mesa" data-tip="Na mesa"
-        onClick={e => { e.stopPropagation(); onOut() }}><SquareArrowOutUpRight size={12} strokeWidth={2} /></button>}
-      <button type="button" className="cam-toggle" aria-label={hidden ? 'Mostrar câmera' : 'Esconder câmera'} data-tip={hidden ? 'Mostrar câmera' : 'Esconder câmera'}
-        onClick={e => { e.stopPropagation(); setHidden(!hidden) }}>
-        {hidden ? <Camera size={13} strokeWidth={1.9} /> : <Minus size={13} strokeWidth={2} />}
-      </button>
-    </div>
-  )
-}
 
-// Carta Camera aberta durante a transmissao: escolher a camera (ou desligar) sem mexer na tela.
-function CameraSheet({ cfg, update, live }) {
-  const all = useCameras()
-  const cams = (all ?? []).filter(c => !(cfg.kind === 'device' && c.id === cfg.deviceId))
-  const pick = id => update({ camId: id })
-  if (all && !cams.length) return <div className="cam-sheet is-empty"><CameraOff size={22} strokeWidth={1.4} /><span>Nenhuma câmera</span></div>
-  return (
-    <ul className="dd-list cam-sheet" role="radiogroup" aria-label="Câmera">
-      {!all && <li className="sp-loading"><span className="spin-icon" /></li>}
-      {cams.map((c, i) => {
-        const on = cfg.camId === c.id
-        return <li key={c.id}>
-          <button type="button" role="radio" aria-checked={on} className={`dd-row ${on ? 'is-on' : ''}`} onClick={() => pick(c.id)}>
-            <span className="dd-check is-radio">{on && <Check size={11} strokeWidth={2.5} />}</span>
-            <Camera size={14} strokeWidth={1.75} className="dd-icon" />
-            <span className="dd-name">{c.label || `Câmera ${i + 1}`}</span>
-            {on && live && <span className="live-dot" />}
-          </button>
-        </li>
-      })}
-      {cams.length > 0 && <li>
-        <button type="button" role="radio" aria-checked={!cfg.camId} className={`dd-row ${!cfg.camId ? 'is-on' : ''}`} onClick={() => pick(null)}>
-          <span className="dd-check is-radio">{!cfg.camId && <Check size={11} strokeWidth={2.5} />}</span>
-          <CameraOff size={14} strokeWidth={1.75} className="dd-icon" />
-          <span className="dd-name">Desligada</span>
-        </button>
-      </li>}
-    </ul>
-  )
-}

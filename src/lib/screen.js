@@ -1,7 +1,7 @@
 // Sala de tela: presenca + sinalizacao WebRTC via Supabase Realtime (broadcast).
 // Topologia: malha 1 -> N. Quem transmite abre um RTCPeerConnection por espectador.
 // Fluxo: espectador envia `request` -> transmissor responde `offer` -> espectador `answer` -> `ice` dos dois lados.
-import { getPreset, mungeAnswer, tuneCamera, tuneSender, videoConstraints } from './quality.js'
+import { getPreset, mungeAnswer, tuneSender, tuneSide, videoConstraints } from './quality.js'
 import { deviceKind, presencePublisher } from './presence.js'
 import { API_BASE } from './env.js'
 import { createIceLoader } from './ice.js'
@@ -34,7 +34,8 @@ export class ScreenRoom {
     this.sendStats = null
     this.statsHistory = new WeakMap()
     this.pollingStats = false
-    this.cam = null // { deviceId, stream, track }: camera junto com a tela (segunda trilha de video)
+    this.cam = null // { stream, track, audio, cleanup }: fonte camera
+    this.camFlip = false // camera espelhada para todos (quem assiste espelha na exibicao)
     this.closed = false
   }
 
@@ -48,11 +49,11 @@ export class ScreenRoom {
     this.onChange({
       connected: this.channel?.state === 'joined',
       peers: this.peers,
-      sharing: !!this.local,
+      sharing: this.sharing,
       local: this.local,
       remote: this.remote,
       watching: this.primary?.id ?? null,
-      inputs: [...this.inputs.values()].map(({ id, stream, stats, preview, cam, camStream }) => ({ id, stream, stats, preview, cam: cam && camStream ? camStream : null })),
+      inputs: [...this.inputs.values()].map(({ id, stream, stats, preview, screenOn, cam, camStream, camFlip }) => ({ id, stream: screenOn === false ? null : stream, screen: screenOn !== false, stats, preview, cam: cam && camStream ? camStream : null, camFlip: !!camFlip })),
       camLocal: this.cam?.stream ?? null,
       viewers: this.out.size,
       preset: this.preset.id,
@@ -125,7 +126,9 @@ export class ScreenRoom {
       photo: this.me.photo,
       device: this.me.device ?? deviceKind,
       watching: [...this.inputs.values()].filter((v) => !v.preview).map((v) => v.id),
-      sharing: !!this.local,
+      sharing: this.sharing,
+      screen: !!this.local,
+      cam: !!this.cam,
       shareId: this.shareId,
       preset: this.preset.id,
     }
@@ -184,9 +187,19 @@ export class ScreenRoom {
   }
 
   // ---------- transmissor ----------
+  // Duas fontes independentes: tela (this.local) e camera (this.cam), em qualquer ordem. Cada conexao com um
+  // espectador tem sempre quatro trilhas fixas: video e audio da tela, video e audio da camera (vazias quando a
+  // fonte esta desligada). Ligar, trocar ou desligar uma fonte e so replaceTrack + sinal 'slots', sem renegociar.
+  // A fonte principal (a tela, ou a camera sozinha) usa a qualidade e o bitrate escolhidos; a camera ao lado da tela
+  // usa tuneSide (teto baixo, ate 540p). Versoes antigas tocam a primeira trilha de video (a tela).
+
+  get sharing() { return !!(this.local || this.cam) }
+  get primaryVideo() { return this.local?.getVideoTracks()[0] ?? this.cam?.track ?? null }
 
   // capture: { stream, cleanup } vindo de sources.js
-  async startShare(capture, presetId, bitrate) {
+  async startShare(capture, presetId, bitrate) { return this.startScreen(capture, presetId, bitrate) }
+
+  async startScreen(capture, presetId, bitrate) {
     if (this.closed || capture.stream.getVideoTracks()[0]?.readyState !== 'live') {
       capture.stream.getTracks().forEach((t) => t.stop())
       capture.cleanup?.()
@@ -198,32 +211,88 @@ export class ScreenRoom {
     const [video] = stream.getVideoTracks()
     video.contentHint = this.preset.fps >= 60 ? 'motion' : 'detail'
     video.addEventListener('ended', () => {
-      if (this.local === stream) this.stopShare()
+      if (this.local === stream) this.stopScreen()
     }, { once: true })
-    this.stopShare(false)
+    this.dropScreen()
     this.local = stream
     this.cleanup = capture.cleanup
     this.captureEngine = capture.engine
     this.setCapturePreset = capture.setPreset
     this.getCaptureStats = capture.getStats
-    this.shareId = uid()
+    this.shareId ??= uid()
+    await this.pushSlots()
     await this.track()
     this.emit()
     return this.local === stream
   }
 
-  stopShare(announce = true) {
+  // capture de captureDevice: { stream (video + audio opcional), cleanup, setAudioGain }
+  async startCamera(capture, presetId, bitrate) {
+    const [video] = capture.stream.getVideoTracks()
+    if (this.closed || video?.readyState !== 'live') {
+      capture.stream.getTracks().forEach((t) => t.stop())
+      capture.cleanup?.()
+      return false
+    }
+    if (!this.local) {
+      this.preset = getPreset(presetId)
+      this.bitrate = bitrate ?? this.preset.bitrate
+    }
+    video.contentHint = 'motion'
+    const cam = { stream: capture.stream, track: video, audio: capture.stream.getAudioTracks()[0] ?? null, cleanup: capture.cleanup, setAudioGain: capture.setAudioGain }
+    video.addEventListener('ended', () => { if (this.cam === cam) this.stopCamera() }, { once: true })
+    this.dropCamera()
+    this.cam = cam
+    this.shareId ??= uid()
+    await this.pushSlots()
+    await this.track()
+    this.emit()
+    return this.cam === cam
+  }
+
+  dropScreen() {
     if (!this.local) return
-    this.stopCamera()
     this.local.getTracks().forEach((t) => t.stop())
     this.cleanup?.()
     this.cleanup = null
     this.captureEngine = null
     this.setCapturePreset = null
     this.getCaptureStats = null
+    this.local = null
+  }
+
+  dropCamera() {
+    if (!this.cam) return
+    this.cam.stream.getTracks().forEach((t) => t.stop())
+    this.cam.cleanup?.()
+    this.cam = null
+  }
+
+  stopScreen() {
+    if (!this.local) return
+    this.dropScreen()
+    if (!this.cam) return this.stopShare()
+    void this.pushSlots()
+    this.track()
+    this.emit()
+  }
+
+  stopCamera() {
+    if (!this.cam) return
+    this.dropCamera()
+    if (!this.local) return this.stopShare()
+    void this.pushSlots()
+    this.track()
+    this.emit()
+  }
+
+  // Para as duas fontes e fecha as conexoes de envio.
+  stopShare(announce = true) {
+    if (!this.local && !this.cam && !this.shareId) return
+    this.dropScreen()
+    this.dropCamera()
     this.uplink = null
     this.sendStats = null
-    this.local = null
     this.shareId = null
     for (const id of [...this.out.keys()]) this.closeOut(id)
     if (announce) this.track()
@@ -232,10 +301,10 @@ export class ScreenRoom {
 
   async setPreset(presetId) {
     this.preset = getPreset(presetId)
-    if (this.local) {
-      const [video] = this.local.getVideoTracks()
-      video.contentHint = this.preset.fps >= 60 ? 'motion' : 'detail'
-      const constraints = this.setCapturePreset
+    const video = this.primaryVideo
+    if (video) {
+      if (this.local) video.contentHint = this.preset.fps >= 60 ? 'motion' : 'detail'
+      const constraints = this.local && this.setCapturePreset
         ? this.setCapturePreset(this.preset)
         : video.applyConstraints(videoConstraints(this.preset))
       await constraints.catch(() => {})
@@ -251,17 +320,50 @@ export class ScreenRoom {
     this.emit()
   }
 
+  async tunePc(pc) {
+    const t = pc.slots
+    if (!t) return
+    if (t.screen.track) await tuneSender(t.screen, this.preset, this.bitrate, true)
+    if (t.cam.track) {
+      if (this.local) await tuneSide(t.cam, t.cam.track)
+      else await tuneSender(t.cam, this.preset, this.bitrate, true)
+    }
+    for (const a of [t.screenAudio, t.camAudio]) if (a.track) await tuneSender(a, this.preset, this.bitrate)
+  }
+
   async retune() {
-    for (const pc of this.out.values()) {
-      for (const sender of pc.getSenders()) {
-        if (sender === pc.camSender) await tuneCamera(sender)
-        else if (sender.track) await tuneSender(sender, this.preset, this.bitrate, true)
+    for (const pc of this.out.values()) await this.tunePc(pc)
+  }
+
+  slotState() { return { screen: !!this.local, cam: !!this.cam, camFlip: this.camFlip } }
+
+  setCamFlip(on) {
+    if (this.camFlip === !!on) return
+    this.camFlip = !!on
+    for (const [viewerId, pc] of this.out) if (pc.slots) this.send(viewerId, 'slots', { sid: pc.sid, ...this.slotState() })
+    this.emit()
+  }
+
+  async pushSlots() {
+    const tracks = {
+      screen: this.local?.getVideoTracks()[0] ?? null,
+      screenAudio: this.local?.getAudioTracks()[0] ?? null,
+      cam: this.cam?.track ?? null,
+      camAudio: this.cam?.audio ?? null,
+    }
+    for (const [viewerId, pc] of this.out) {
+      if (!pc.slots) continue
+      for (const k of Object.keys(tracks)) {
+        if (pc.slots[k].track !== tracks[k]) await pc.slots[k].replaceTrack(tracks[k]).catch(() => {})
       }
+      await this.tunePc(pc)
+      this.send(viewerId, 'slots', { sid: pc.sid, ...this.slotState() })
+      this.send(viewerId, 'cam', { sid: pc.sid, on: !!this.cam }) // espectadores 1.18/1.19
     }
   }
 
   async serve(viewerId, sid) {
-    if (!this.local) return this.send(viewerId, 'unavailable', { sid })
+    if (!this.sharing) return this.send(viewerId, 'unavailable', { sid })
     this.closeOut(viewerId)
     const pc = new RTCPeerConnection({ iceServers: this.ice })
     pc.sid = sid
@@ -272,15 +374,16 @@ export class ScreenRoom {
       if (this.out.get(viewerId) !== pc) return
       pc.setConfiguration({ iceServers })
     }
-    const [video] = this.local.getVideoTracks()
-    const sender = pc.addTrack(video, this.local)
-    preferCodecs(pc.getTransceivers().find((t) => t.sender === sender))
-    const audioSenders = this.local.getAudioTracks().map((t) => pc.addTrack(t, this.local))
-    // Camera: sempre uma segunda trilha de video (vazia se a camera estiver desligada). Ligar/desligar depois e so
-    // replaceTrack, sem renegociar. Vai no mesmo MediaStream da tela: versoes antigas tocam a primeira trilha (a tela).
-    const cam = pc.addTransceiver(this.cam?.track ?? 'video', { direction: 'sendonly', streams: [this.local] })
+    this.msScreen ??= new MediaStream()
+    this.msCam ??= new MediaStream()
+    const add = (track, kind, ms) => pc.addTransceiver(track ?? kind, { direction: 'sendonly', streams: [ms] })
+    const screen = add(this.local?.getVideoTracks()[0], 'video', this.msScreen)
+    const screenAudio = add(this.local?.getAudioTracks()[0], 'audio', this.msScreen)
+    const cam = add(this.cam?.track, 'video', this.msScreen) // mesmo stream da tela: versoes antigas tocam a 1a trilha
+    const camAudio = add(this.cam?.audio, 'audio', this.msCam)
+    preferCodecs(screen)
     preferCodecs(cam)
-    pc.camSender = cam.sender
+    pc.slots = { screen: screen.sender, screenAudio: screenAudio.sender, cam: cam.sender, camAudio: camAudio.sender }
     pc.onicecandidate = (e) => e.candidate && this.send(viewerId, 'ice', { sid, candidate: e.candidate.toJSON(), dir: 'down' })
     pc.onconnectionstatechange = () => {
       if (['failed', 'closed'].includes(pc.connectionState)) this.closeOut(viewerId)
@@ -288,64 +391,9 @@ export class ScreenRoom {
     }
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
-    await tuneSender(sender, this.preset, this.bitrate, true)
-    for (const a of audioSenders) await tuneSender(a, this.preset, this.bitrate)
-    await tuneCamera(pc.camSender)
-    this.send(viewerId, 'offer', { sid, sdp: pc.localDescription.toJSON(), cam: !!this.cam })
+    await this.tunePc(pc)
+    this.send(viewerId, 'offer', { sid, sdp: pc.localDescription.toJSON(), cam: !!this.cam, slots: this.slotState() })
     this.emit()
-  }
-
-  // Liga, troca ou desliga a camera durante a transmissao. deviceId null = desligada.
-  async setCamera(deviceId) {
-    if (!this.local) deviceId = null
-    if ((this.cam?.deviceId ?? null) === deviceId) return
-    this.camWant = deviceId
-    if (!deviceId) return this.stopCamera()
-    let stream
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { deviceId: { exact: deviceId }, width: { ideal: 640 }, height: { ideal: 360 }, aspectRatio: { ideal: 16 / 9 }, frameRate: { ideal: 30, max: 30 } },
-        audio: false,
-      })
-    } catch {
-      if (this.camWant === deviceId) this.camWant = null
-      this.emit()
-      return false
-    }
-    // Outro pedido chegou enquanto a camera abria (ou a transmissao parou): descarta esta.
-    if (this.camWant !== deviceId || !this.local) {
-      stream.getTracks().forEach((t) => t.stop())
-      return false
-    }
-    const [track] = stream.getVideoTracks()
-    track.contentHint = 'motion'
-    track.addEventListener('ended', () => { if (this.cam?.track === track) this.stopCamera() }, { once: true })
-    const old = this.cam
-    this.cam = { deviceId, stream, track }
-    await this.pushCamera()
-    old?.track.stop()
-    this.emit()
-    return true
-  }
-
-  stopCamera() {
-    this.camWant = null
-    if (!this.cam) return
-    const { track } = this.cam
-    this.cam = null
-    void this.pushCamera()
-    track.stop()
-    this.emit()
-  }
-
-  async pushCamera() {
-    const track = this.cam?.track ?? null
-    for (const [viewerId, pc] of this.out) {
-      if (!pc.camSender) continue
-      await pc.camSender.replaceTrack(track).catch(() => {})
-      if (track) await tuneCamera(pc.camSender)
-      this.send(viewerId, 'cam', { sid: pc.sid, on: !!track })
-    }
   }
 
   forgive(viewerId) {
@@ -422,10 +470,12 @@ export class ScreenRoom {
     this.emit()
   }
 
-  async answer(from, sid, sdp, cam = false) {
+  async answer(from, sid, sdp, cam = false, slots = null) {
     const input = this.inputs.get(from)
     if (!input || input.sid !== sid || input.pc) return
-    input.cam = !!cam
+    input.cam = !!(slots ? slots.cam : cam)
+    input.screenOn = slots ? !!slots.screen : true
+    input.camFlip = !!slots?.camFlip
     const pc = new RTCPeerConnection({ iceServers: this.ice })
     input.pc = pc
     if (!this.ice) {
@@ -438,10 +488,11 @@ export class ScreenRoom {
       if (e.track.kind === 'video' && 'jitterBufferTarget' in e.receiver) {
         try { e.receiver.jitterBufferTarget = 80 } catch { /* optional receiver hint */ }
       }
-      // A segunda trilha de video e a camera de quem transmite: fica fora do stream da tela.
-      const videos = pc.getTransceivers().filter((t) => t.receiver.track?.kind === 'video')
-      if (e.track.kind === 'video' && videos.indexOf(e.transceiver) > 0) {
-        input.camStream = new MediaStream([e.track])
+      // A segunda trilha de cada tipo (video e audio) e da camera de quem transmite: fica fora do stream da tela.
+      const same = pc.getTransceivers().filter((t) => t.receiver.track?.kind === e.track.kind)
+      if (same.indexOf(e.transceiver) > 0) {
+        input.camStream ??= new MediaStream()
+        if (!input.camStream.getTracks().includes(e.track)) input.camStream.addTrack(e.track)
         return this.emit()
       }
       if (!input.stream) input.stream = new MediaStream()
@@ -461,17 +512,22 @@ export class ScreenRoom {
 
   // ---------- sinalizacao ----------
 
-  async onSignal({ from, type, sid, sdp, candidate, dir, cam, on }) {
+  async onSignal({ from, type, sid, sdp, candidate, dir, cam, on, slots, screen, camFlip }) {
     try {
       if (type === 'unwatch' && this.out.get(from)?.sid === sid) {
         this.closeOut(from)
         return this.emit()
       }
       if (type === 'request') return await this.serve(from, sid)
-      if (type === 'offer') return await this.answer(from, sid, sdp, cam)
+      if (type === 'offer') return await this.answer(from, sid, sdp, cam, slots)
       if (type === 'cam') {
         const input = this.inputs.get(from)
         if (input?.sid === sid) { input.cam = !!on; this.emit() }
+        return
+      }
+      if (type === 'slots') {
+        const input = this.inputs.get(from)
+        if (input?.sid === sid) { input.cam = !!cam; input.screenOn = !!screen; input.camFlip = !!camFlip; this.emit() }
         return
       }
       if (type === 'answer') {
@@ -508,7 +564,7 @@ export class ScreenRoom {
     if (this.pollingStats || (!this.out.size && !this.inputs.size && !this.getCaptureStats)) return
     this.pollingStats = true
     try {
-      const share = this.local
+      const share = this.shareId
       const inbound = [...this.inputs.values()]
       const outgoing = [...this.out]
       const samples = await Promise.all([
@@ -529,7 +585,7 @@ export class ScreenRoom {
           changed = true
         }
       })
-      if (share && this.local === share) {
+      if (share && this.shareId === share) {
         const viewers = outgoing.flatMap(([id, pc], i) => {
           if (this.out.get(id) !== pc) return []
           const sample = readOutboundVideo(...samples[i + 1])

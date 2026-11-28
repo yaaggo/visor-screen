@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowUpToLine, AppWindow, AudioLines, Check, ChevronDown, Clapperboard, Cpu, Gauge, LoaderCircle, Monitor, RefreshCw, Speaker, Video, VolumeX } from 'lucide-react'
+import { ArrowUpToLine, AppWindow, AudioLines, Check, FlipVertical2, VideoOff, ChevronDown, Clapperboard, Cpu, Gauge, LoaderCircle, Monitor, RefreshCw, Speaker, Video, VolumeX } from 'lucide-react'
 import { BITRATES, PRESETS, fmtMbps, getPreset, snapBitrate } from '../lib/quality.js'
 import { desktop } from '../lib/env.js'
 import { listDevices, matchAudio } from '../lib/sources.js'
@@ -45,6 +45,7 @@ export function useShareConfig() {
     presetId: pref.get('visor.preset', DEFAULT_PRESET()),
     bitrate: pref.get('visor.bitrate', getPreset(pref.get('visor.preset', DEFAULT_PRESET())).bitrate),
     replay: pref.get('visor.replay', 0), // 0 = desligado; 30/60 = segundos guardados para o F9 (so desktop)
+    camFlip: pref.get('visor.camFlip', false), // camera espelhada (para todos)
     camId: pref.get('visor.cam', null), // camera junto com a tela (null = desligada)
   }))
   const update = useCallback((patch) => {
@@ -61,6 +62,7 @@ export function useShareConfig() {
       pref.set('visor.preset', next.presetId)
       pref.set('visor.bitrate', next.bitrate)
       pref.set('visor.replay', next.replay)
+      pref.set('visor.camFlip', next.camFlip)
       pref.set('visor.cam', next.camId)
       return next
     })
@@ -68,7 +70,16 @@ export function useShareConfig() {
   return [cfg, update]
 }
 
-export default function SharePanel({ cfg, update, live, open, peers, uplink, apps, nativeCapture, onStart }) {
+// side: camera ao lado da tela ja no ar. So a lista de dispositivos e Iniciar (a qualidade e a da tela).
+export default function SharePanel({ cfg, update, live, open, peers, uplink, apps, nativeCapture, onStart, side = false }) {
+  if (side) return (
+    <div className="share-panel">
+      {open && <DevicePicker cfg={cfg} update={update} preview />}
+      <div className="sp-row sp-side">
+        <button type="button" className="island-go" aria-label="Iniciar" data-tip="Iniciar" onClick={() => onStart()}><span className="live-dot" /></button>
+      </div>
+    </div>
+  )
   const preset = getPreset(cfg.presetId)
   const fpsOptions = PRESETS.filter((p) => p.res === preset.res).map((p) => p.fps)
   const pickPreset = (res, fps) => {
@@ -93,7 +104,7 @@ export default function SharePanel({ cfg, update, live, open, peers, uplink, app
       )}
 
       {!live && open && desktop && cfg.kind !== 'device' && <SourceGrid cfg={cfg} update={update} />}
-      {!live && open && cfg.kind === 'device' && <DevicePicker cfg={cfg} update={update} />}
+      {!live && open && cfg.kind === 'device' && <DevicePicker cfg={cfg} update={update} preview />}
       {!live && open && nativeCapture && cfg.kind !== 'device' && <EnginePicker cfg={cfg} update={update} />}
       {cfg.kind !== 'device' && open && <AudioPicker cfg={cfg} update={update} apps={apps} />}
       {open && desktop && window.visor?.clips && replaySupported() && <ReplayPicker cfg={cfg} update={update} />}
@@ -329,7 +340,35 @@ function AudioPicker({ cfg, update, apps }) {
 
 // ---------- Dispositivos (placa de captura / webcam) ----------
 
-function DevicePicker({ cfg, update }) {
+// Previa da camera escolhida antes de transmitir. Mostra exatamente o que os outros vao ver (inclusive espelhada).
+function CamPreview({ deviceId, flip, onFlip }) {
+  const video = useRef(null)
+  const [state, setState] = useState('loading') // loading | live | error
+  useEffect(() => {
+    let stream = null, alive = true
+    setState('loading')
+    navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId }, width: { ideal: 640 }, height: { ideal: 360 } }, audio: false })
+      .then(s => {
+        if (!alive) return s.getTracks().forEach(t => t.stop())
+        stream = s
+        if (video.current) video.current.srcObject = s
+        setState('live')
+      }, () => alive && setState('error'))
+    return () => { alive = false; stream?.getTracks().forEach(t => t.stop()) }
+  }, [deviceId])
+  return (
+    <div className={`cam-preview is-${state}`}>
+      <video ref={video} autoPlay playsInline muted style={flip ? { transform: 'scaleX(-1)' } : undefined} />
+      {state === 'loading' && <LoaderCircle size={18} className="spin-icon" />}
+      {state === 'error' && <VideoOff size={20} strokeWidth={1.5} />}
+      <IconButton label="Espelhar" className={`cam-flip ${flip ? 'is-on' : ''}`} active={flip} aria-pressed={flip} magnetic={false} onClick={onFlip}>
+        <FlipVertical2 size={15} strokeWidth={1.75} />
+      </IconButton>
+    </div>
+  )
+}
+
+function DevicePicker({ cfg, update, preview = false }) {
   const [devs, setDevs] = useState(null)
   useEffect(() => {
     let alive = true
@@ -354,6 +393,7 @@ function DevicePicker({ cfg, update }) {
   const audio = devs.audio.find((a) => a.id === cfg.deviceAudioId)
   return (
     <>
+      {preview && cfg.deviceId && <CamPreview deviceId={cfg.deviceId} flip={cfg.camFlip} onFlip={() => update({ camFlip: !cfg.camFlip })} />}
       <div className="chips" role="listbox" aria-label="Video">
         {devs.video.map((v) => (
           <button

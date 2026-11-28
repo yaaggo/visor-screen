@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-27, versao 1.20.0 (duas cartas brancas: Tela e Câmera).
+Ultima atualizacao: 2026-11-27, versao 1.21.0 (tela e camera como fontes independentes; camera e uma carta como a tela).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -251,6 +251,38 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.21.0 — tela e camera independentes (2026-11-28):
+
+- Pedidos: com a camera ligada primeiro a carta Tela sumia; a carta da camera na mao com a camera ja na mesa era
+  estranha; a camera deve ser "como uma tela" (carta na mesa, arrastar para fora = miniplayer, voltar como carta);
+  espelhar a camera no app; previa da camera antes de transmitir; Ajustes que reabria ao clicar de novo.
+- Rede (`screen.js`): `startScreen` / `startCamera` / `stopScreen` / `stopCamera` em qualquer ordem (`startShare` =
+  `startScreen`, `stopShare` para as duas). `sharing` = tela ou camera. Cada conexao tem 4 transceivers fixos (video e
+  audio da tela, video e audio da camera; vazios quando a fonte esta desligada); trocar = `replaceTrack` + sinal
+  `slots` { screen, cam, camFlip } (e `cam` para 1.18/1.19), a oferta leva `slots`. Presenca publica `screen` e `cam`.
+  A fonte principal (tela, ou camera sozinha) usa qualidade/bitrate do painel; camera ao lado da tela: `tuneSide`
+  (1,5 Mbps, ate 540p, prioridade baixa) e abre em 720p30. Espectador separa pelo indice do transceiver de cada tipo
+  (o 2o = camera, inclusive o audio da camera/placa). `inputs[]` tem `screen`, `cam` (MediaStream) e `camFlip`.
+- Mesa e mao (`ScreenChannel`): cartas independentes por chave (`<pessoa>` = tela, `<pessoa>:cam` = camera) e o conjunto
+  `off` (cartas devolvidas a mao). Por uma carta de quem voce nao assiste abre a conexao e so aquela carta vai para a
+  mesa (a outra fica na mao); devolver a ultima carta da pessoa para de receber. Camera nova de quem voce assiste entra
+  na mesa. Miniplayer, "voltar", soltar na mao e fechar usam as mesmas chaves (`putOnTable` / `putBack`). A mini camera
+  sobre a tela (CamBubble) e a `CameraSheet` sairam.
+- Cartas brancas: Tela some com a tela no ar, Câmera some com a camera no ar (antes a Tela sumia com qualquer fonte).
+  Câmera com a tela no ar abre o painel `side` (previa, lista, audio do dispositivo, Iniciar; sem qualidade).
+- Espelhar: `cfg.camFlip` (`visor.camFlip`), botao na previa (`CamPreview` em SharePanel) e na carta da propria camera.
+  Vale para todos: quem assiste espelha na exibicao pelo flag (`slots.camFlip`); a propria previa mostra o mesmo.
+  Icone: `FlipVertical2` (nesta versao do lucide e o de eixo vertical; `FlipHorizontal2` tem o eixo na horizontal).
+- Ajustes alterna (`toggle` no ToolButton + `closeRef` no ShareSheet; o clique fora ignora `[data-sheet-toggle]`) e o
+  painel cresce a partir do botao. Cartas da mesa sempre 16:9 centralizadas (`fit16x9` nos dois sentidos).
+- QA com prints no painel do navegador (Vite dev, Supabase real, conta/servidor temporarios apagados; camera e tela de
+  canvas): camera primeiro -> carta propria + carta Tela na mao; tela depois -> duas cartas 16:9; previa e espelhar;
+  arrastar a camera para a borda -> player flutuante espelhado (na web; no desktop e a janela do miniplayer) e voltar;
+  segunda aba como espectador: cartas Tela e Câmera separadas, so a escolhida vai a mesa, uma conexao, devolver as duas
+  fecha; transmissor desliga/religa a camera e para a tela com o espectador assistindo, sem nova conexao; Ajustes abre e
+  fecha pelo mesmo botao. `npm test` passou (a suite de toque falhou uma vez e passou nas duas seguintes).
+  Nao verificado: camera fisica, janela do miniplayer no app instalado com a camera, duas maquinas.
 
 1.20.0 — cartas Tela e Câmera (2026-11-27):
 

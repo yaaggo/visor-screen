@@ -50,13 +50,15 @@ export async function tuneSender(sender, preset, bitrate, keepResolution = true)
   }
 }
 
-// Camera junto com a tela: teto baixo e prioridade abaixo da tela, para nao roubar banda do jogo.
-export const CAMERA_BITRATE = 900_000
-export async function tuneCamera(sender) {
+// Camera ao lado da tela: teto baixo, ate 540p e prioridade abaixo da tela, para nao roubar banda do jogo.
+// Sozinha, a camera e a fonte principal e usa tuneSender com a qualidade escolhida.
+export const SIDE_BITRATE = 1_500_000
+export async function tuneSide(sender, track) {
   if (!sender?.track) return
   const params = sender.getParameters()
   if (!params.encodings?.length) params.encodings = [{}]
-  Object.assign(params.encodings[0], { maxBitrate: CAMERA_BITRATE, maxFramerate: 30, scaleResolutionDownBy: 1, priority: 'low', networkPriority: 'low' })
+  const h = track?.getSettings?.().height ?? 0
+  Object.assign(params.encodings[0], { maxBitrate: SIDE_BITRATE, maxFramerate: 30, scaleResolutionDownBy: h > 540 ? h / 540 : 1, priority: 'low', networkPriority: 'low' })
   params.degradationPreference = 'balanced'
   try { await sender.setParameters(params) } catch {
     delete params.degradationPreference

@@ -2438,31 +2438,15 @@ body { overscroll-behavior: none }
   .card-table.no-hand .table-felt { margin-bottom: 6px }
 }
 
-/* Camera de quem transmite sobre a tela (CamBubble em ScreenChannel.jsx) */
-.cam-bubble { position:absolute; z-index:3; width:clamp(92px,22%,300px); aspect-ratio:16/9; border-radius:14px; overflow:hidden;
-  background:#0b0b0b; border:1px solid #ffffff30; box-shadow:0 10px 30px #000a; cursor:grab; touch-action:none;
-  opacity:0; scale:.9; pointer-events:none;
-  transition:opacity .25s var(--out), scale .45s var(--spring), width .45s var(--spring), border-radius .3s var(--out), top .45s var(--spring), bottom .45s var(--spring), left .45s var(--spring), right .45s var(--spring) }
-.cam-bubble.is-live { opacity:1; scale:1; pointer-events:auto }
-.cam-bubble.at-tl { top:56px; left:14px } .cam-bubble.at-tr { top:56px; right:14px }
-.cam-bubble.at-bl { bottom:14px; left:14px } .cam-bubble.at-br { bottom:14px; right:14px }
-.cam-bubble.is-dragging { cursor:grabbing; transition:opacity .25s, scale .2s, width .45s var(--spring); scale:1.04; z-index:6 }
-.cam-bubble video { width:100%; height:100%; object-fit:cover; opacity:1 !important; scale:1 !important }
-.cam-bubble.is-local video { transform:scaleX(-1) }
-.cam-toggle { position:absolute; top:6px; right:6px; width:24px; height:24px; display:grid; place-items:center; border-radius:999px;
-  color:#fff; background:#000a; border:1px solid #ffffff26; opacity:0; transition:opacity .2s }
-.cam-bubble:hover .cam-toggle, .cam-toggle:focus-visible { opacity:1 }
-@media (hover:none) { .cam-toggle { opacity:1 } }
-/* Recolhida: vira uma pilula com o icone; o mesmo botao devolve. */
-.cam-bubble.is-hidden { width:34px; border-radius:999px; aspect-ratio:1; background:#000c }
-.cam-bubble.is-hidden video { opacity:0 !important }
-.cam-bubble.is-hidden .cam-toggle { opacity:1; inset:4px; width:auto; height:auto; background:none; border:0 }
-.stage:fullscreen .cam-bubble, .stage:-webkit-full-screen .cam-bubble { width:clamp(140px,18%,360px) }
-@container (max-width:300px) { .table-card .cam-bubble { display:none } }
-@media (prefers-reduced-motion:reduce) { .cam-bubble { transition:opacity .2s } }
-.cam-bubble .cam-out { right:34px }
+/* Carta de camera (tela propria da camera de quem transmite) */
 .stage.is-cam video { object-fit:cover }
 .stage.is-mirror video, .hand-art video.is-mirror { transform:scaleX(-1) }
-.cam-sheet { min-width:240px; padding:4px }
-.cam-sheet .live-dot { margin-left:auto }
-.cam-sheet.is-empty { display:flex; align-items:center; gap:10px; padding:16px; color:var(--muted); font-size:13px }
+/* Previa da camera no painel (antes de transmitir) */
+.cam-preview { position:relative; width:min(100%, 340px, 30vh * 16 / 9); margin-inline:auto; aspect-ratio:16/9; border-radius:14px; overflow:hidden; display:grid; place-items:center;
+  background:#0b0b0b; border:1px solid var(--line); color:var(--faint) }
+.cam-preview video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:0; transition:opacity .3s var(--out) }
+.cam-preview.is-live video { opacity:1 }
+.cam-preview .cam-flip { position:absolute; right:8px; bottom:8px; background:#000a; border:1px solid #ffffff26; color:#fff }
+.cam-preview .cam-flip.is-on { background:#fff; color:#000 }
+.hud-btn.is-on { background:#fff; color:#000 }
+.sp-row.sp-side { justify-content:flex-end }

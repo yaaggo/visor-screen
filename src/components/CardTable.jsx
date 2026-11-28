@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Camera, CameraOff, Layers, MessageSquare, Monitor, PictureInPicture2, Pin, PinOff, Plus, Settings2, Smartphone, Square, Star, Undo2, WifiOff, X } from 'lucide-react'
+import { Camera, CameraOff, FlipVertical2, Layers, MessageSquare, Monitor, PictureInPicture2, Pin, PinOff, Plus, Settings2, Smartphone, Square, Star, Undo2, WifiOff, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { Avatar } from './ui.jsx'
 import './table.css'
@@ -54,12 +54,13 @@ function spotLayout(W, H, ids, spot) {
   return out
 }
 
-// Celula mais alta que 16:9 (mesa em retrato no celular): o quadro fica 16:9 e centralizado na celula,
-// em vez de uma carta alta com o video numa faixa no meio.
+// A carta tem sempre o formato do video (16:9), centralizada na celula: sem faixas pretas numa celula larga
+// (duas transmissoes empilhadas) nem carta alta com o video numa faixa (mesa em retrato no celular).
 function fit16x9(rects) {
   for (const r of Object.values(rects)) {
-    const h = r.w * 9 / 16
-    if (r.h > h * 1.08) { r.y += (r.h - h) / 2; r.h = h }
+    const h = r.w * 9 / 16, w = r.h * 16 / 9
+    if (r.h > h * 1.04) { r.y += (r.h - h) / 2; r.h = h }
+    else if (r.w > w * 1.04) { r.x += (r.w - w) / 2; r.w = w }
   }
   return rects
 }
@@ -78,7 +79,7 @@ const insert = (list, index, id) => [...list.slice(0, index), id, ...list.slice(
 // ghost {id, x, y}: o miniplayer arrastado de volta sobre o app (acende a mesa/mao); apiRef.current.dropGhost solta.
 // adds: cartas brancas de transmitir [{ key, label, icon, preview }]; sem adds, showAdd mostra a carta + padrao.
 export default function CardTable({ hand, tiles, audience = [], showAdd, adds, shareFrom = null, toasts = [], onPlace, onReturn, onPeek, onAdd, onToast, renderStage, onPip, onPipDrag, ghost, apiRef,
-  visible = true, shareOpen = false, shareTitle = 'Transmitir', shareContent = null, onShareClose, onShareSettings, onStopShare, onCamOff }) {
+  visible = true, shareOpen = false, shareTitle = 'Transmitir', shareContent = null, onShareClose, onShareSettings, onStopShare, onCamOff, onCamFlip }) {
   const felt = useRef(null)
   const handRef = useRef(null)
   const fanDetach = useRef(null)
@@ -90,6 +91,7 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, adds, s
   }, [])
   const spotChip = useRef(null)
   const addRef = useRef(null)
+  const closeSheet = useRef(null) // fecha o painel com a animacao (usado pelo botao Ajustes)
   const gesture = useRef(null)
   const pending = useRef(new Map()) // id -> { index } | { spot: true } escolhido no arrasto da mao
   const lastRects = useRef({})
@@ -387,10 +389,16 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, adds, s
               {tiles.length > 1 && <ToolButton label={isSpot ? 'Tirar do destaque' : 'Destacar'} onClick={() => setSpot(s => s === tile.id ? null : tile.id)}>
                 {isSpot ? <PinOff size={15} strokeWidth={1.75}/> : <Pin size={15} strokeWidth={1.75}/>}</ToolButton>}
               {tile.camOf ? <>
-                <ToolButton label="Voltar para a tela" onClick={leave}><Undo2 size={15} strokeWidth={1.75}/></ToolButton>
+                <ToolButton label={tile.own ? 'Recolher' : 'Parar de ver'} onClick={leave}><Undo2 size={15} strokeWidth={1.75}/></ToolButton>
+                {tile.own && onCamFlip && <ToolButton label="Espelhar" className={tile.mirror ? 'is-on' : ''} onClick={onCamFlip}><FlipVertical2 size={15} strokeWidth={1.75}/></ToolButton>}
                 {tile.own && onCamOff && <ToolButton label="Desligar câmera" className="is-stop" onClick={onCamOff}><CameraOff size={14} strokeWidth={1.75}/></ToolButton>}
               </> : <>
-                {tile.own && onShareSettings && <ToolButton label="Ajustes" onClick={onShareSettings}><Settings2 size={15} strokeWidth={1.75}/></ToolButton>}
+                {tile.own && onShareSettings && <ToolButton label="Ajustes" toggle onClick={e => {
+                  // Ajustes alterna: com o painel aberto, fecha (antes o clique fora fechava e o botao reabria)
+                  if (shareOpen && !shareFrom) return closeSheet.current?.()
+                  addRef.current = e.currentTarget
+                  onShareSettings()
+                }}><Settings2 size={15} strokeWidth={1.75}/></ToolButton>}
                 <ToolButton label={tile.own ? 'Recolher' : 'Parar de ver'} onClick={leave}><Undo2 size={15} strokeWidth={1.75}/></ToolButton>
                 {tile.own && onStopShare && <ToolButton label="Parar transmissão" className="is-stop" onClick={onStopShare}><Square size={11} fill="currentColor"/></ToolButton>}
               </>}
@@ -427,7 +435,7 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, adds, s
             onPointerLeave={() => onPeek?.(null)}>
             <span className="hand-art">
               {card.pip ? <PictureInPicture2 size={24} strokeWidth={1.4}/> : card.peek
-                ? <video className={card.cam && card.own ? 'is-mirror' : undefined} autoPlay muted playsInline ref={node => { if (node && node.srcObject !== card.peek) node.srcObject = card.peek }}/>
+                ? <video className={card.mirror ? 'is-mirror' : undefined} autoPlay muted playsInline ref={node => { if (node && node.srcObject !== card.peek) node.srcObject = card.peek }}/>
                 : <Avatar id={card.profileId} revision={card.photo} name={card.name} size={40}/>}
               <i className="live-dot"/>
             </span>
@@ -439,17 +447,17 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, adds, s
         })}
       </div>}
       {headSlot && visible && audienceEl && createPortal(audienceEl, headSlot)}
-      {shareOpen && <ShareSheet origin={addRef} title={shareTitle} onClose={onShareClose}>{shareContent}</ShareSheet>}
+      {shareOpen && <ShareSheet origin={addRef} closeRef={closeSheet} title={shareTitle} onClose={onShareClose}>{shareContent}</ShareSheet>}
     </div>
   )
 }
 
-function ToolButton({ label, className = '', onClick, children }) {
-  return <button type="button" className={'icon-btn hud-btn ' + className} aria-label={label} data-tip={label} onClick={onClick}>{children}</button>
+function ToolButton({ label, className = '', onClick, toggle = false, children }) {
+  return <button type="button" className={'icon-btn hud-btn ' + className} aria-label={label} data-tip={label} data-sheet-toggle={toggle || undefined} onClick={onClick}>{children}</button>
 }
 
 // A carta + cresce ate virar o painel de opcoes (e encolhe de volta ao fechar).
-function ShareSheet({ origin, title, onClose, children }) {
+function ShareSheet({ origin, closeRef, title, onClose, children }) {
   const ref = useRef(null)
   const closing = useRef(false)
   const [isClosing, setClosing] = useState(false)
@@ -479,9 +487,10 @@ function ShareSheet({ origin, title, onClose, children }) {
     if (a) a.onfinish = onClose
     else onClose()
   }
+  if (closeRef) closeRef.current = close
   useEffect(() => {
     const key = e => { if (e.key === 'Escape') close() }
-    const down = e => { if (!ref.current?.contains(e.target) && !origin.current?.contains(e.target)) close() }
+    const down = e => { if (!ref.current?.contains(e.target) && !origin.current?.contains(e.target) && !e.target.closest?.('[data-sheet-toggle]')) close() }
     addEventListener('keydown', key)
     addEventListener('pointerdown', down)
     return () => { removeEventListener('keydown', key); removeEventListener('pointerdown', down) }
