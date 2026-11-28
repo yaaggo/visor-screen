@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Layers, MessageSquare, Monitor, PictureInPicture2, Pin, PinOff, Plus, Settings2, Smartphone, Square, Star, Undo2, WifiOff, X } from 'lucide-react'
+import { Camera, CameraOff, Layers, MessageSquare, Monitor, PictureInPicture2, Pin, PinOff, Plus, Settings2, Smartphone, Square, Star, Undo2, WifiOff, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { Avatar } from './ui.jsx'
 import './table.css'
@@ -76,8 +76,8 @@ const insert = (list, index, id) => [...list.slice(0, index), id, ...list.slice(
 // Desktop (onPipDrag): perto da borda a janela do miniplayer e preparada; quando a carta ficaria cortada pela
 // borda ela some e a janela do miniplayer assume, seguindo o cursor ('prepare' | 'out' | 'in' | 'cancel').
 // ghost {id, x, y}: o miniplayer arrastado de volta sobre o app (acende a mesa/mao); apiRef.current.dropGhost solta.
-export default function CardTable({ hand, tiles, audience = [], showAdd, toasts = [], onPlace, onReturn, onPeek, onAdd, onToast, renderStage, onPip, onPipDrag, ghost, apiRef,
-  visible = true, shareOpen = false, shareTitle = 'Transmitir', shareContent = null, onShareClose, onShareSettings, onStopShare }) {
+export default function CardTable({ hand, tiles, audience = [], showAdd, addLabel = 'Transmitir', addPreview = null, toasts = [], onPlace, onReturn, onPeek, onAdd, onToast, renderStage, onPip, onPipDrag, ghost, apiRef,
+  visible = true, shareOpen = false, shareTitle = 'Transmitir', shareContent = null, onShareClose, onShareSettings, onStopShare, onCamOff }) {
   const felt = useRef(null)
   const handRef = useRef(null)
   const fanDetach = useRef(null)
@@ -384,9 +384,14 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, toasts 
               <span className="hud-sep"/>
               {tiles.length > 1 && <ToolButton label={isSpot ? 'Tirar do destaque' : 'Destacar'} onClick={() => setSpot(s => s === tile.id ? null : tile.id)}>
                 {isSpot ? <PinOff size={15} strokeWidth={1.75}/> : <Pin size={15} strokeWidth={1.75}/>}</ToolButton>}
-              {tile.own && onShareSettings && <ToolButton label="Ajustes" onClick={onShareSettings}><Settings2 size={15} strokeWidth={1.75}/></ToolButton>}
-              <ToolButton label={tile.own ? 'Recolher' : 'Parar de ver'} onClick={leave}><Undo2 size={15} strokeWidth={1.75}/></ToolButton>
-              {tile.own && onStopShare && <ToolButton label="Parar transmissão" className="is-stop" onClick={onStopShare}><Square size={11} fill="currentColor"/></ToolButton>}
+              {tile.camOf ? <>
+                <ToolButton label="Voltar para a tela" onClick={leave}><Undo2 size={15} strokeWidth={1.75}/></ToolButton>
+                {tile.own && onCamOff && <ToolButton label="Desligar câmera" className="is-stop" onClick={onCamOff}><CameraOff size={14} strokeWidth={1.75}/></ToolButton>}
+              </> : <>
+                {tile.own && onShareSettings && <ToolButton label="Ajustes" onClick={onShareSettings}><Settings2 size={15} strokeWidth={1.75}/></ToolButton>}
+                <ToolButton label={tile.own ? 'Recolher' : 'Parar de ver'} onClick={leave}><Undo2 size={15} strokeWidth={1.75}/></ToolButton>
+                {tile.own && onStopShare && <ToolButton label="Parar transmissão" className="is-stop" onClick={onStopShare}><Square size={11} fill="currentColor"/></ToolButton>}
+              </>}
             </>)}/>
         })}
         {rects[SLOT] && <div className="table-placeholder" style={{ left: rects[SLOT].x, top: rects[SLOT].y, width: rects[SLOT].w, height: rects[SLOT].h }}/>}
@@ -401,26 +406,28 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, toasts 
           const d = i - mid
           const z = cards.length - i
           const style = { '--d': d, '--abs': Math.abs(d), '--z': z } // a mais a esquerda por cima, a + por baixo
-          if (card.add) return <button key={card.id} ref={addRef} className={'hand-card hand-add' + (shareOpen ? ' is-open' : '')} data-z={z} style={style} aria-label="Transmitir" aria-expanded={shareOpen} onClick={onAdd}>
-            <span className="hand-art"><Plus size={22} strokeWidth={1.5}/></span>
-            <span className="hand-caption">Transmitir</span>
+          if (card.add) return <button key={card.id} ref={addRef} className={'hand-card hand-add' + (shareOpen ? ' is-open' : '')} data-z={z} style={style} aria-label={addLabel} aria-expanded={shareOpen} onClick={onAdd}>
+            <span className="hand-art">{addPreview
+              ? <video className="is-mirror" autoPlay muted playsInline ref={node => { if (node && node.srcObject !== addPreview) node.srcObject = addPreview }}/>
+              : addLabel === 'Câmera' ? <Camera size={22} strokeWidth={1.5}/> : <Plus size={22} strokeWidth={1.5}/>}</span>
+            <span className="hand-caption">{addLabel}</span>
           </button>
           return <button key={card.id} className={'hand-card' + (card.own ? ' is-own' : '') + (card.pip ? ' is-pip' : '')} data-z={z} style={style}
-            aria-label={(card.own ? 'Sua transmissão' : card.name) + (card.pip ? ' · no miniplayer, voltar para a mesa' : ' · colocar na mesa')}
+            aria-label={(card.own ? 'Sua transmissão' : card.name) + (card.cam ? ' · câmera' : '') + (card.pip ? ' · no miniplayer, voltar para a mesa' : ' · colocar na mesa')}
             data-tip={card.pip ? 'No miniplayer' : undefined}
             onPointerDown={e => handDown(e, card)}
             onClick={e => { if (e.detail === 0) onPlace(card.id) }}
-            onPointerEnter={() => !gesture.current && !card.own && !card.pip && onPeek?.(card)}
+            onPointerEnter={() => !gesture.current && !card.own && !card.pip && !card.cam && onPeek?.(card)}
             onPointerLeave={() => onPeek?.(null)}>
             <span className="hand-art">
               {card.pip ? <PictureInPicture2 size={24} strokeWidth={1.4}/> : card.peek
-                ? <video autoPlay muted playsInline ref={node => { if (node && node.srcObject !== card.peek) node.srcObject = card.peek }}/>
+                ? <video className={card.cam && card.own ? 'is-mirror' : undefined} autoPlay muted playsInline ref={node => { if (node && node.srcObject !== card.peek) node.srcObject = card.peek }}/>
                 : <Avatar id={card.profileId} revision={card.photo} name={card.name} size={40}/>}
               <i className="live-dot"/>
             </span>
             <span className="hand-caption">
               <span>{card.own ? 'você' : card.name}</span>
-              {card.device === 'mobile' ? <Smartphone size={10} aria-hidden/> : <Monitor size={10} aria-hidden/>}
+              {card.cam ? <Camera size={10} aria-hidden/> : card.device === 'mobile' ? <Smartphone size={10} aria-hidden/> : <Monitor size={10} aria-hidden/>}
             </span>
           </button>
         })}

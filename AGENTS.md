@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-27, versao 1.18.0 (camera junto com a tela).
+Ultima atualizacao: 2026-11-27, versao 1.19.0 (carta Camera na mao durante a transmissao; camera como carta propria na mesa).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -251,6 +251,23 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.19.0 — carta Camera e camera na mesa (2026-11-27):
+
+- Pedido: ligar a camera depois de comecar a tela, pela carta da mao. Transmitindo, a carta + continua na mao como
+  "Câmera" (`addLabel`/`addPreview` em CardTable; com a camera ligada a arte mostra a propria camera espelhada).
+  Clicar abre so a lista de cameras (`CameraSheet` em ScreenChannel, `panelMode` 'camera'); Ajustes na barra da
+  transmissao continua abrindo o painel completo (`panelMode` 'share'). A escolha e a mesma `cfg.camId` da 1.18.
+- Duas formas de ver a camera, para quem assiste e para quem transmite: mini camera sobre a tela (padrao) ou carta propria
+  na mesa (id `<pessoa>:cam`, `camOut` em ScreenChannel). A carta da camera fica na mao (`cam: true`, video ao vivo na
+  arte, icone de camera); soltar/clicar poe na mesa e a mini camera sai da tela; botao "Na mesa" na mini camera faz o
+  mesmo. Na carta da camera: "Voltar para a tela" (volta a mini camera) e, para a propria, "Desligar câmera". Miniplayer
+  tambem aceita a camera. Camera desligada tira a carta da mesa. Rede igual a 1.18 (mesma trilha).
+- QA (Vite dev, Supabase real, conta e servidor temporarios apagados; camera e tela de canvas, enumerateDevices simulado):
+  transmitindo, a mao mostra "Câmera"; ligar pela carta: mini camera na propria tela, carta da camera na mao, previa na
+  carta; por na mesa: 2 cartas, mini camera some, palco espelhado com "você · câmera"; "Voltar para a tela" e
+  "Na mesa" funcionam; desligar tira a carta. `npm test` passou. Nao verificado: espectador real vendo a carta da
+  camera de outra pessoa (o caminho de rede foi testado na 1.18), camera fisica.
 
 1.18.0 — camera junto com a tela (2026-11-27):
 

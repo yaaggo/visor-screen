@@ -2460,3 +2460,9 @@ body { overscroll-behavior: none }
 .stage:fullscreen .cam-bubble, .stage:-webkit-full-screen .cam-bubble { width:clamp(140px,18%,360px) }
 @container (max-width:300px) { .table-card .cam-bubble { display:none } }
 @media (prefers-reduced-motion:reduce) { .cam-bubble { transition:opacity .2s } }
+.cam-bubble .cam-out { right:34px }
+.stage.is-cam video { object-fit:cover }
+.stage.is-mirror video, .hand-art video.is-mirror { transform:scaleX(-1) }
+.cam-sheet { min-width:240px; padding:4px }
+.cam-sheet .live-dot { margin-left:auto }
+.cam-sheet.is-empty { display:flex; align-items:center; gap:10px; padding:16px; color:var(--muted); font-size:13px }
