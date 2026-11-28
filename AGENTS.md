@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-27, versao 1.17.2 (mao recolhida sobe menos e tem area de hover estavel).
+Ultima atualizacao: 2026-11-27, versao 1.17.3 (carta da mao sem flicker no ultimo pixel).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -251,6 +251,12 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.17.3 — carta da mao sem flicker (2026-11-27):
+
+- Mouse no ultimo pixel de uma carta da mao: a carta subia (-10% + scale 1.08), saia de baixo do ponteiro e voltava.
+  `.hand-card::after` estende a area de hover `hh*.24 + 16px` abaixo da carta. Medido no TableLab: erguida termina em
+  798 px e o ponto 827 (antigo rodape da carta) ainda acerta a carta.
 
 1.17.2 — mao recolhida sem pular (2026-11-27):
 

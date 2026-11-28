@@ -77,6 +77,9 @@
   translate:calc(var(--d)*var(--spread)) calc(var(--abs)*var(--abs)*3px + 6%); rotate:calc(var(--d)*4deg); z-index:var(--z,1);
   transition:translate .55s var(--spring),rotate .55s var(--spring),scale .4s var(--spring),left .2s cubic-bezier(.2,.8,.25,1),box-shadow .2s,opacity .25s;
   animation:hand-in .5s var(--spring) both }
+/* Area de hover abaixo da carta: ela sobe ao receber o mouse e, sem isso, saia de baixo do ponteiro no ultimo pixel
+   e ficava subindo e descendo. */
+.hand-card::after { content:""; position:absolute; left:0; right:0; top:100%; height:calc(var(--hh)*.24 + 16px) }
 .hand:hover .hand-card,.hand.is-settling .hand-card { translate:calc(var(--d)*var(--spread)) calc(var(--abs)*var(--abs)*3px) }
 .hand-card:hover,.hand-card:focus-visible { translate:calc(var(--d)*var(--spread)) -10% !important; scale:1.08; box-shadow:0 14px 34px #000a }
 /* --part: espaco aberto em volta da carta em foco (fanPhysics.js) */
