@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-27, versao 1.19.0 (carta Camera na mao durante a transmissao; camera como carta propria na mesa).
+Ultima atualizacao: 2026-11-27, versao 1.20.0 (duas cartas brancas: Tela e Câmera).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -251,6 +251,21 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.20.0 — cartas Tela e Câmera (2026-11-27):
+
+- Pedido: o item Camera demorava a aparecer no painel (dependia de `enumerateDevices`) e a escolha devia ser separada.
+  A mao tem duas cartas brancas (`adds` em CardTable, `shareFrom` diz qual abriu o painel): **Tela** (Tela inteira/
+  Janela; o segmentado nao tem mais Dispositivo) e **Câmera** (cameras e placas de captura, o antigo Dispositivo).
+  A Tela some com a tela no ar; a Camera fica e abre a lista para a camera junto com a tela (`CameraSheet`). Transmitindo
+  a propria camera (kind device) nenhuma das duas aparece. Celular sem captura de tela: so a Camera.
+- `panelMode` em ScreenChannel: 'screen' | 'device' | 'settings' (Ajustes ao vivo) | 'camera'. A carta Tela volta ao
+  ultimo tipo de tela (`visor.screenKind`). Parar a transmissao zera `camId` (a proxima comeca sem camera junto).
+  O dropdown Camera saiu do painel (`CameraPicker` removido); `useCameras` pede permissao uma vez para ter os nomes.
+- QA (Vite dev, Supabase real, conta e servidor temporarios apagados; camera e tela de canvas): mao com Tela e Câmera;
+  Câmera abre so a lista de dispositivos ("Webcam QA") e Iniciar transmite a camera (mao vazia); Tela abre Tela
+  inteira/Janela; com a tela no ar so a Câmera fica e liga a mini camera; parar zera a camera e volta as duas cartas.
+  `npm test` passou.
 
 1.19.0 — carta Camera e camera na mesa (2026-11-27):
 

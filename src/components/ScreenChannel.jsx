@@ -8,7 +8,7 @@ import { fmtMbps, getPreset } from '../lib/quality.js'
 import { desktop } from '../lib/env.js'
 import { captureDesktop, captureDevice, captureWeb } from '../lib/sources.js'
 import { Avatar, IconButton } from './ui.jsx'
-import SharePanel, { exeKey, pref, useCameras, useShareConfig } from './SharePanel.jsx'
+import SharePanel, { exeKey, pref, screenCaptureSupported, useCameras, useShareConfig } from './SharePanel.jsx'
 import CardTable from './CardTable.jsx'
 import MiniPlayer, { miniDesktop, miniPlayerSize, openMiniWindow, prepareMini } from './MiniPlayer.jsx'
 import { ReplayBuffer, replaySupported } from '../lib/replay.js'
@@ -98,9 +98,10 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
   const [error, setError] = useState(false)
   const [nativeCapture, setNativeCapture] = useState(false)
   const [panelOpen, setPanelOpen] = useState(false) // painel de transmitir (a carta + aberta)
-  const [panelMode, setPanelMode] = useState('share') // 'share' (painel completo) | 'camera' (so a camera, ao vivo)
+  const [panelMode, setPanelMode] = useState('screen') // 'screen' | 'device' (comecar) | 'settings' (Ajustes ao vivo) | 'camera' (camera junto com a tela)
   const [camOut, setCamOut] = useState(() => new Set()) // ids cuja camera esta na mesa como carta propria
-  const stopShare = () => { roomRef.current.stopShare(); captureRef.current = null; play('stop') }
+  // Parar desliga tambem a camera que ia junto (a proxima transmissao comeca sem ela).
+  const stopShare = () => { roomRef.current.stopShare(); captureRef.current = null; update({ camId: null }); play('stop') }
   const [ownOnTable, setOwnOnTable] = useState(true)
   const [pip, setPip] = useState(null) // { id, win } transmissao no miniplayer
   const placedAt = useRef(new Map())
@@ -455,17 +456,29 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
           audience={allPeers.filter(p => !p.sharing)}
           toasts={toasts}
           onToast={() => { setChat(true); pref.set(chatKey, true) }}
-          showAdd
-          addLabel={s.sharing ? 'Câmera' : 'Transmitir'}
-          addPreview={ownCam}
-          onAdd={() => { setError(false); setPanelMode(s.sharing ? 'camera' : 'share'); setPanelOpen(true) }}
+          adds={[
+            // Duas cartas brancas: Tela (tela/janela) e Camera (cameras e placas de captura). A Tela some quando a tela
+            // esta no ar; a Camera fica e liga a camera junto com a tela. Transmitindo a propria camera, nenhuma aparece.
+            ...(!s.sharing && screenCaptureSupported() ? [{ key: 'screen', label: 'Tela', icon: <MonitorUp size={22} strokeWidth={1.5}/> }] : []),
+            ...(!s.sharing || cfg.kind !== 'device' ? [{ key: 'camera', label: 'Câmera', icon: <Camera size={22} strokeWidth={1.5}/>, preview: ownCam }] : []),
+          ]}
+          shareFrom={panelMode === 'settings' ? null : panelMode === 'device' ? 'camera' : panelMode}
+          onAdd={key => {
+            setError(false)
+            if (key === 'screen') {
+              if (cfg.kind === 'device') update({ kind: pref.get('visor.screenKind', 'monitor'), sourceId: null })
+              setPanelMode('screen')
+            } else if (s.sharing) setPanelMode('camera')
+            else { update({ kind: 'device' }); setPanelMode('device') }
+            setPanelOpen(true)
+          }}
           shareOpen={panelOpen}
-          shareTitle={!s.sharing ? 'Transmitir' : panelMode === 'camera' ? 'Câmera' : 'Ajustes'}
+          shareTitle={panelMode === 'settings' ? 'Ajustes' : panelMode === 'screen' ? 'Tela' : 'Câmera'}
           onShareClose={() => setPanelOpen(false)}
-          onShareSettings={() => { setPanelMode('share'); setPanelOpen(true) }}
+          onShareSettings={() => { setPanelMode('settings'); setPanelOpen(true) }}
           onStopShare={stopShare}
           onCamOff={() => update({ camId: null })}
-          shareContent={s.sharing && panelMode === 'camera' ? <CameraSheet cfg={cfg} update={update} live={!!ownCam} /> : <>
+          shareContent={panelMode === 'camera' ? <CameraSheet cfg={cfg} update={update} live={!!ownCam} /> : <>
             <SharePanel cfg={cfg} update={update} live={s.sharing} open={panelOpen} peers={s.peers} uplink={s.uplink} apps={apps}
               nativeCapture={nativeCapture} onStart={async () => { setError(false); if (await start()) setPanelOpen(false) }}/>
             {error && <span role="status" className="share-error">{error}</span>}

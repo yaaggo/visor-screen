@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowUpToLine, AppWindow, AudioLines, Camera, CameraOff, Check, ChevronDown, Clapperboard, Cpu, Gauge, LoaderCircle, Monitor, RefreshCw, Speaker, Video, VolumeX } from 'lucide-react'
+import { ArrowUpToLine, AppWindow, AudioLines, Check, ChevronDown, Clapperboard, Cpu, Gauge, LoaderCircle, Monitor, RefreshCw, Speaker, Video, VolumeX } from 'lucide-react'
 import { BITRATES, PRESETS, fmtMbps, getPreset, snapBitrate } from '../lib/quality.js'
 import { desktop } from '../lib/env.js'
 import { listDevices, matchAudio } from '../lib/sources.js'
@@ -51,6 +51,7 @@ export function useShareConfig() {
     setCfg((c) => {
       const next = { ...c, ...(typeof patch === 'function' ? patch(c) : patch) }
       pref.set('visor.kind', next.kind)
+      if (next.kind !== 'device') pref.set('visor.screenKind', next.kind)
       pref.set('visor.captureEngineStable', next.engine)
       pref.set('visor.device', next.deviceId)
       pref.set('visor.deviceAudio', next.deviceAudioId)
@@ -77,7 +78,7 @@ export default function SharePanel({ cfg, update, live, open, peers, uplink, app
 
   return (
     <div className="share-panel">
-      {!live && screenCaptureSupported() && (
+      {!live && screenCaptureSupported() && cfg.kind !== 'device' && (
         <div className="sp-row sp-head">
           <Segmented
             label="Fonte"
@@ -86,7 +87,6 @@ export default function SharePanel({ cfg, update, live, open, peers, uplink, app
             options={[
               { value: 'monitor', label: 'Tela inteira', tip: 'Tela', icon: <Monitor size={16} strokeWidth={1.75} /> },
               { value: 'window', label: 'Janela', tip: 'Janela', icon: <AppWindow size={16} strokeWidth={1.75} /> },
-              { value: 'device', label: 'Dispositivo', tip: 'Dispositivo', icon: <Video size={16} strokeWidth={1.75} /> },
             ]}
           />
         </div>
@@ -97,7 +97,6 @@ export default function SharePanel({ cfg, update, live, open, peers, uplink, app
       {!live && open && nativeCapture && cfg.kind !== 'device' && <EnginePicker cfg={cfg} update={update} />}
       {cfg.kind !== 'device' && open && <AudioPicker cfg={cfg} update={update} apps={apps} />}
       {open && desktop && window.visor?.clips && replaySupported() && <ReplayPicker cfg={cfg} update={update} />}
-      {open && <CameraPicker cfg={cfg} update={update} />}
 
       <div className="sp-row">
         <Segmented
@@ -416,62 +415,24 @@ function DevicePicker({ cfg, update }) {
   )
 }
 
-// ---------- Camera junto com a tela ----------
-// Lista as cameras do sistema (as mesmas do Dispositivo). Com Dispositivo como fonte, a camera em uso some da lista.
-// Some do painel quando nao ha outra camera. Funciona ao vivo: trocar ou desligar nao interrompe a transmissao.
+// ---------- Cameras do sistema ----------
+// Usada pela carta Camera (camera junto com a tela, ao vivo). Mesma lista do Dispositivo.
 export function useCameras() {
   const [list, setList] = useState(null)
   useEffect(() => {
-    let alive = true
+    let alive = true, asked = false
     const load = () => navigator.mediaDevices?.enumerateDevices().then(all => {
-      if (alive) setList(all.filter(d => d.kind === 'videoinput').map(d => ({ id: d.deviceId, label: d.label.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '') })))
+      if (!alive) return
+      const cams = all.filter(d => d.kind === 'videoinput')
+      setList(cams.map(d => ({ id: d.deviceId, label: d.label.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '') })))
+      // Sem permissao os nomes vem vazios: pede uma vez (listDevices abre e fecha a camera) e relista.
+      if (!asked && cams.some(d => !d.label)) { asked = true; listDevices().then(load, () => {}) }
     }).catch(() => alive && setList([]))
     load()
     navigator.mediaDevices?.addEventListener('devicechange', load)
     return () => { alive = false; navigator.mediaDevices?.removeEventListener('devicechange', load) }
   }, [])
   return list
-}
-
-function CameraPicker({ cfg, update }) {
-  const [named, setNamed] = useState(false)
-  const all = useCameras()
-  const cams = (all ?? []).filter(c => !(cfg.kind === 'device' && c.id === cfg.deviceId))
-  // Os nomes so aparecem depois da permissao: pede uma vez ao abrir a lista.
-  const askNames = () => {
-    if (named || !all?.some(c => !c.label)) return
-    setNamed(true)
-    listDevices().catch(() => {})
-  }
-  if (!cams.length) return null
-  const on = cams.find(c => c.id === cfg.camId)
-  return (
-    <div onPointerDown={askNames}>
-      <Dropdown label="Câmera" trigger={<>
-        {on ? <Camera size={14} strokeWidth={1.75} className="dd-lead" /> : <CameraOff size={14} strokeWidth={1.75} className="dd-lead" />}
-        <span className="dd-name">{on ? (on.label || 'Câmera') : 'Câmera'}</span>
-      </>}>
-        <ul className="dd-list" role="radiogroup" aria-label="Câmera">
-          <li>
-            <button type="button" role="radio" aria-checked={!on} className={`dd-row ${!on ? 'is-on' : ''}`} onClick={() => update({ camId: null })}>
-              <span className="dd-check is-radio">{!on && <Check size={11} strokeWidth={2.5} />}</span>
-              <CameraOff size={14} strokeWidth={1.75} className="dd-icon" />
-              <span className="dd-name">Desligada</span>
-            </button>
-          </li>
-          {cams.map((c, i) => (
-            <li key={c.id}>
-              <button type="button" role="radio" aria-checked={on?.id === c.id} className={`dd-row ${on?.id === c.id ? 'is-on' : ''}`} onClick={() => update({ camId: c.id })}>
-                <span className="dd-check is-radio">{on?.id === c.id && <Check size={11} strokeWidth={2.5} />}</span>
-                <Camera size={14} strokeWidth={1.75} className="dd-icon" />
-                <span className="dd-name">{c.label || `Câmera ${i + 1}`}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </Dropdown>
-    </div>
-  )
 }
 
 // ---------- Bitrate ----------

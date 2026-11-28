@@ -76,7 +76,8 @@ const insert = (list, index, id) => [...list.slice(0, index), id, ...list.slice(
 // Desktop (onPipDrag): perto da borda a janela do miniplayer e preparada; quando a carta ficaria cortada pela
 // borda ela some e a janela do miniplayer assume, seguindo o cursor ('prepare' | 'out' | 'in' | 'cancel').
 // ghost {id, x, y}: o miniplayer arrastado de volta sobre o app (acende a mesa/mao); apiRef.current.dropGhost solta.
-export default function CardTable({ hand, tiles, audience = [], showAdd, addLabel = 'Transmitir', addPreview = null, toasts = [], onPlace, onReturn, onPeek, onAdd, onToast, renderStage, onPip, onPipDrag, ghost, apiRef,
+// adds: cartas brancas de transmitir [{ key, label, icon, preview }]; sem adds, showAdd mostra a carta + padrao.
+export default function CardTable({ hand, tiles, audience = [], showAdd, adds, shareFrom = null, toasts = [], onPlace, onReturn, onPeek, onAdd, onToast, renderStage, onPip, onPipDrag, ghost, apiRef,
   visible = true, shareOpen = false, shareTitle = 'Transmitir', shareContent = null, onShareClose, onShareSettings, onStopShare, onCamOff }) {
   const felt = useRef(null)
   const handRef = useRef(null)
@@ -366,7 +367,8 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, addLabe
           {audience.slice(0, 5).map(p => <span key={p.id} data-tip={p.name}><Avatar id={p.profileId} revision={p.photo} name={p.name} size={26}/></span>)}
           {audience.length > 5 && <span className="audience-more">+{audience.length - 5}</span>}
         </div>
-  const cards = [...hand, ...(showAdd ? [{ id: '__add', add: true }] : [])]
+  const addCards = adds ?? (showAdd ? [{ key: 'share', label: 'Transmitir' }] : [])
+  const cards = [...hand, ...addCards.map(a => ({ ...a, id: '__add:' + a.key, add: true }))]
   const mid = (cards.length - 1) / 2
   const spotlight = spot && base.includes(spot) && base.length > 1
 
@@ -406,12 +408,16 @@ export default function CardTable({ hand, tiles, audience = [], showAdd, addLabe
           const d = i - mid
           const z = cards.length - i
           const style = { '--d': d, '--abs': Math.abs(d), '--z': z } // a mais a esquerda por cima, a + por baixo
-          if (card.add) return <button key={card.id} ref={addRef} className={'hand-card hand-add' + (shareOpen ? ' is-open' : '')} data-z={z} style={style} aria-label={addLabel} aria-expanded={shareOpen} onClick={onAdd}>
-            <span className="hand-art">{addPreview
-              ? <video className="is-mirror" autoPlay muted playsInline ref={node => { if (node && node.srcObject !== addPreview) node.srcObject = addPreview }}/>
-              : addLabel === 'Câmera' ? <Camera size={22} strokeWidth={1.5}/> : <Plus size={22} strokeWidth={1.5}/>}</span>
-            <span className="hand-caption">{addLabel}</span>
+          if (card.add) {
+            const open = shareOpen && (shareFrom ?? addCards[0]?.key) === card.key
+            return <button key={card.id} ref={el => { if (el && open) addRef.current = el }} className={'hand-card hand-add' + (open ? ' is-open' : '')} data-z={z} style={style}
+              aria-label={card.label} aria-expanded={open} onClick={e => { addRef.current = e.currentTarget; onAdd?.(card.key) }}>
+            <span className="hand-art">{card.preview
+              ? <video className="is-mirror" autoPlay muted playsInline ref={node => { if (node && node.srcObject !== card.preview) node.srcObject = card.preview }}/>
+              : card.icon ?? <Plus size={22} strokeWidth={1.5}/>}</span>
+            <span className="hand-caption">{card.label}</span>
           </button>
+          }
           return <button key={card.id} className={'hand-card' + (card.own ? ' is-own' : '') + (card.pip ? ' is-pip' : '')} data-z={z} style={style}
             aria-label={(card.own ? 'Sua transmissão' : card.name) + (card.cam ? ' · câmera' : '') + (card.pip ? ' · no miniplayer, voltar para a mesa' : ' · colocar na mesa')}
             data-tip={card.pip ? 'No miniplayer' : undefined}
