@@ -21,7 +21,8 @@
   }, 40)
   async function decoded(room) {
     const report = await room.inPc?.getStats()
-    return [...(report?.values() ?? [])].find(row => row.type === 'inbound-rtp' && row.kind === 'video')?.framesDecoded ?? 0
+    // A camera e uma segunda trilha de video (vazia aqui): conta a trilha com mais quadros, a da tela.
+    return Math.max(0, ...[...(report?.values() ?? [])].filter(row => row.type === 'inbound-rtp' && row.kind === 'video').map(row => row.framesDecoded ?? 0))
   }
   async function playing(room) {
     for (let i = 0; i < 60; i++) {

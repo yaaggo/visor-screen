@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Activity, ChevronRight, Clapperboard, Eye, Maximize, MessageSquare, Minimize, Monitor, MonitorUp, Smartphone, Square, Volume2, VolumeX, X } from 'lucide-react'
+import { Activity, Camera, ChevronRight, Clapperboard, Eye, Maximize, MessageSquare, Minimize, Minus, Monitor, MonitorUp, Smartphone, Square, Volume2, VolumeX, X } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { deviceKind, endpointId } from '../lib/presence.js'
 import { ScreenRoom } from '../lib/screen.js'
@@ -105,6 +105,9 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
   // Campo ASCII leve no fundo da sala (6 fps parado); para enquanto voce transmite ou com a sala fora da tela.
   const fieldCanvas = useRef(null)
   useAsciiField(fieldCanvas, { light: true, paused: s.sharing || !visible, background: t => t.matches?.('.card-table, .table-felt.is-empty, .table-slot, .hand') })
+  // Camera junto com a tela: abre so enquanto transmite; trocar no painel vale ao vivo, sem reconectar ninguem.
+  const camWanted = s.sharing && cfg.camId && !(cfg.kind === 'device' && cfg.camId === cfg.deviceId) ? cfg.camId : null
+  useEffect(() => { roomRef.current?.setCamera(camWanted) }, [camWanted])
   const needsAudioApps = cfg.kind !== 'device' && (panelOpen || (s.sharing && cfg.audioMode === 'all' && cfg.exclude.length > 0))
   const apps = useAudioApps(needsAudioApps)
   const targetKey = JSON.stringify(audioTargets(cfg, apps))
@@ -284,7 +287,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
 
   const inputs = s.inputs ?? []
   const allTiles = inputs.filter(input => !input.preview)
-  if (s.sharing && ownOnTable) allTiles.unshift({ id: endpointId, stream: s.local })
+  if (s.sharing && ownOnTable) allTiles.unshift({ id: endpointId, stream: s.local, cam: s.camLocal })
   // Miniplayer: a transmissao sai da mesa mas continua sendo recebida; na mao fica uma carta indicando onde ela esta.
   // pip = { id, win, mode: 'card' | 'player', phase: 'drag' | 'open' }. 'drag': a janela segue o cursor enquanto a
   // carta e arrastada para fora do app (a transmissao ainda e da mesa); 'open': solta fora, virou player.
@@ -451,7 +454,7 @@ export default function ScreenChannel({ channel, profile, chatChannel, visitors 
           onPipDrag={miniDesktop ? pipDrag : undefined}
           ghost={ghost}
           apiRef={tableApi}
-          renderStage={(tile, tools) => <Stage tools={tools} stream={tile.stream} local={tile.own} stats={tile.stats} room={roomRef.current} streamId={tile.id} replay={tile.own && replayOn}
+          renderStage={(tile, tools) => <Stage tools={tools} stream={tile.stream} cam={tile.cam} local={tile.own} stats={tile.stats} room={roomRef.current} streamId={tile.id} replay={tile.own && replayOn}
             sendStats={s.sendStats} captureEngine={s.captureEngine} captureStats={s.captureStats}
             hasAudio={!tile.own && !!tile.stream?.getAudioTracks().length} watchingName={tile.name}/>}
         />
@@ -497,7 +500,7 @@ function videoFrame(video) {
 
 const fmtClip = s => Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0')
 
-export function Stage({ tools, stream, local, stats, sendStats, captureEngine, captureStats, watchingName, hasAudio, room, streamId, replay }) {
+export function Stage({ tools, stream, cam, local, stats, sendStats, captureEngine, captureStats, watchingName, hasAudio, room, streamId, replay }) {
   const [diag, setDiag] = useState(() => pref.get('visor.diag', false))
   const video = useRef(null)
   const box = useRef(null)
@@ -664,6 +667,7 @@ export function Stage({ tools, stream, local, stats, sendStats, captureEngine, c
       onDoubleClick={e => stream && !e.altKey && lastPointer.current === 'mouse' && toggleFull()}
       onPointerUp={tap} onPointerDown={pingAt} onPointerMove={aim} onPointerLeave={() => box.current?.classList.remove('is-aiming')}>
       <video ref={video} autoPlay={!local} playsInline muted />
+      {stream && cam && <CamBubble stream={cam} local={local} />}
       {!!pings.length && <div className="stage-pings" aria-hidden>
         {pings.map(p => <span key={p.key} className={'stage-ping' + (p.mine ? ' is-mine' : '')} style={{ left: p.left, top: p.top }}>
           <i/><i/><b>{p.mine ? 'você' : p.name}</b></span>)}
@@ -842,3 +846,80 @@ function Diagnostics({ local, stats, sendStats, captureEngine, captureStats }) {
 }
 
 // Ilha que se expande do botao de transmitir (conceito "Morph island")
+
+// Camera de quem transmite sobre a tela. Fica num canto (o mesmo para todas as transmissoes, salvo em
+// visor.camCorner); arrastar leva ao canto mais proximo; o botao recolhe numa pilula e devolve. Some em telas
+// muito pequenas (carta pequena na mesa) por container query.
+const CORNERS = ['tl', 'tr', 'bl', 'br']
+function CamBubble({ stream, local }) {
+  const video = useRef(null)
+  const el = useRef(null)
+  const [corner, setCorner] = useState(() => CORNERS.includes(pref.get('visor.camCorner', 'br')) ? pref.get('visor.camCorner', 'br') : 'br')
+  const [hidden, setHidden] = useState(false)
+  const [drag, setDrag] = useState(null)
+  const [live, setLive] = useState(false)
+  useEffect(() => {
+    const v = video.current
+    if (!v) return
+    if (v.srcObject !== stream) v.srcObject = stream
+    v.play?.().catch(() => {})
+    const [t] = stream.getVideoTracks()
+    // So aparece com quadros chegando (a trilha existe desde o inicio, vazia enquanto a camera esta desligada).
+    const sync = () => setLive(!!t && !t.muted && t.readyState === 'live')
+    const ready = () => setLive(true)
+    sync()
+    t?.addEventListener('mute', sync)
+    t?.addEventListener('unmute', sync)
+    t?.addEventListener('ended', sync)
+    v.addEventListener('loadeddata', ready)
+    return () => {
+      t?.removeEventListener('mute', sync)
+      t?.removeEventListener('unmute', sync)
+      t?.removeEventListener('ended', sync)
+      v.removeEventListener('loadeddata', ready)
+    }
+  }, [stream])
+  const dragRef = useRef(null) // estado do arraste lido nos eventos (o setState so redesenha)
+  const down = (e) => {
+    e.stopPropagation() // nao levanta a carta da mesa nem conta como toque no palco
+    if (e.button !== 0 || e.target.closest('button')) return
+    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* ponteiro ja solto */ }
+    dragRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY, dx: 0, dy: 0 }
+    setDrag(dragRef.current)
+  }
+  const move = (e) => {
+    const d = dragRef.current
+    if (!d || e.pointerId !== d.id) return
+    e.stopPropagation()
+    dragRef.current = { ...d, dx: e.clientX - d.x, dy: e.clientY - d.y }
+    setDrag(dragRef.current)
+  }
+  const up = (e) => {
+    const d = dragRef.current
+    if (!d || e.pointerId !== d.id) return
+    e.stopPropagation()
+    dragRef.current = null
+    const box = el.current?.parentElement?.getBoundingClientRect()
+    const me = el.current?.getBoundingClientRect()
+    if (box && me && Math.hypot(d.dx, d.dy) > 6) {
+      // o retangulo medido ja inclui o deslocamento do arraste (translate)
+      const cx = me.left + me.width / 2, cy = me.top + me.height / 2
+      const next = (cy < box.top + box.height / 2 ? 't' : 'b') + (cx < box.left + box.width / 2 ? 'l' : 'r')
+      setCorner(next)
+      pref.set('visor.camCorner', next)
+    }
+    setDrag(null)
+  }
+  return (
+    <div ref={el} className={`cam-bubble at-${corner} ${hidden ? 'is-hidden' : ''} ${live ? 'is-live' : ''} ${drag ? 'is-dragging' : ''} ${local ? 'is-local' : ''}`}
+      style={drag ? { translate: `${drag.dx}px ${drag.dy}px` } : undefined}
+      onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
+      onDoubleClick={e => e.stopPropagation()}>
+      <video ref={video} autoPlay playsInline muted />
+      <button type="button" className="cam-toggle" aria-label={hidden ? 'Mostrar câmera' : 'Esconder câmera'} data-tip={hidden ? 'Mostrar câmera' : 'Esconder câmera'}
+        onClick={e => { e.stopPropagation(); setHidden(!hidden) }}>
+        {hidden ? <Camera size={13} strokeWidth={1.9} /> : <Minus size={13} strokeWidth={2} />}
+      </button>
+    </div>
+  )
+}

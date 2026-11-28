@@ -1,7 +1,7 @@
 // Sala de tela: presenca + sinalizacao WebRTC via Supabase Realtime (broadcast).
 // Topologia: malha 1 -> N. Quem transmite abre um RTCPeerConnection por espectador.
 // Fluxo: espectador envia `request` -> transmissor responde `offer` -> espectador `answer` -> `ice` dos dois lados.
-import { getPreset, mungeAnswer, tuneSender, videoConstraints } from './quality.js'
+import { getPreset, mungeAnswer, tuneCamera, tuneSender, videoConstraints } from './quality.js'
 import { deviceKind, presencePublisher } from './presence.js'
 import { API_BASE } from './env.js'
 import { createIceLoader } from './ice.js'
@@ -34,6 +34,7 @@ export class ScreenRoom {
     this.sendStats = null
     this.statsHistory = new WeakMap()
     this.pollingStats = false
+    this.cam = null // { deviceId, stream, track }: camera junto com a tela (segunda trilha de video)
     this.closed = false
   }
 
@@ -51,7 +52,8 @@ export class ScreenRoom {
       local: this.local,
       remote: this.remote,
       watching: this.primary?.id ?? null,
-      inputs: [...this.inputs.values()].map(({ id, stream, stats, preview }) => ({ id, stream, stats, preview })),
+      inputs: [...this.inputs.values()].map(({ id, stream, stats, preview, cam, camStream }) => ({ id, stream, stats, preview, cam: cam && camStream ? camStream : null })),
+      camLocal: this.cam?.stream ?? null,
       viewers: this.out.size,
       preset: this.preset.id,
       bitrate: this.bitrate,
@@ -212,6 +214,7 @@ export class ScreenRoom {
 
   stopShare(announce = true) {
     if (!this.local) return
+    this.stopCamera()
     this.local.getTracks().forEach((t) => t.stop())
     this.cleanup?.()
     this.cleanup = null
@@ -251,7 +254,8 @@ export class ScreenRoom {
   async retune() {
     for (const pc of this.out.values()) {
       for (const sender of pc.getSenders()) {
-        if (sender.track) await tuneSender(sender, this.preset, this.bitrate, true)
+        if (sender === pc.camSender) await tuneCamera(sender)
+        else if (sender.track) await tuneSender(sender, this.preset, this.bitrate, true)
       }
     }
   }
@@ -272,6 +276,11 @@ export class ScreenRoom {
     const sender = pc.addTrack(video, this.local)
     preferCodecs(pc.getTransceivers().find((t) => t.sender === sender))
     const audioSenders = this.local.getAudioTracks().map((t) => pc.addTrack(t, this.local))
+    // Camera: sempre uma segunda trilha de video (vazia se a camera estiver desligada). Ligar/desligar depois e so
+    // replaceTrack, sem renegociar. Vai no mesmo MediaStream da tela: versoes antigas tocam a primeira trilha (a tela).
+    const cam = pc.addTransceiver(this.cam?.track ?? 'video', { direction: 'sendonly', streams: [this.local] })
+    preferCodecs(cam)
+    pc.camSender = cam.sender
     pc.onicecandidate = (e) => e.candidate && this.send(viewerId, 'ice', { sid, candidate: e.candidate.toJSON(), dir: 'down' })
     pc.onconnectionstatechange = () => {
       if (['failed', 'closed'].includes(pc.connectionState)) this.closeOut(viewerId)
@@ -281,8 +290,62 @@ export class ScreenRoom {
     await pc.setLocalDescription(offer)
     await tuneSender(sender, this.preset, this.bitrate, true)
     for (const a of audioSenders) await tuneSender(a, this.preset, this.bitrate)
-    this.send(viewerId, 'offer', { sid, sdp: pc.localDescription.toJSON() })
+    await tuneCamera(pc.camSender)
+    this.send(viewerId, 'offer', { sid, sdp: pc.localDescription.toJSON(), cam: !!this.cam })
     this.emit()
+  }
+
+  // Liga, troca ou desliga a camera durante a transmissao. deviceId null = desligada.
+  async setCamera(deviceId) {
+    if (!this.local) deviceId = null
+    if ((this.cam?.deviceId ?? null) === deviceId) return
+    this.camWant = deviceId
+    if (!deviceId) return this.stopCamera()
+    let stream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: deviceId }, width: { ideal: 640 }, height: { ideal: 360 }, aspectRatio: { ideal: 16 / 9 }, frameRate: { ideal: 30, max: 30 } },
+        audio: false,
+      })
+    } catch {
+      if (this.camWant === deviceId) this.camWant = null
+      this.emit()
+      return false
+    }
+    // Outro pedido chegou enquanto a camera abria (ou a transmissao parou): descarta esta.
+    if (this.camWant !== deviceId || !this.local) {
+      stream.getTracks().forEach((t) => t.stop())
+      return false
+    }
+    const [track] = stream.getVideoTracks()
+    track.contentHint = 'motion'
+    track.addEventListener('ended', () => { if (this.cam?.track === track) this.stopCamera() }, { once: true })
+    const old = this.cam
+    this.cam = { deviceId, stream, track }
+    await this.pushCamera()
+    old?.track.stop()
+    this.emit()
+    return true
+  }
+
+  stopCamera() {
+    this.camWant = null
+    if (!this.cam) return
+    const { track } = this.cam
+    this.cam = null
+    void this.pushCamera()
+    track.stop()
+    this.emit()
+  }
+
+  async pushCamera() {
+    const track = this.cam?.track ?? null
+    for (const [viewerId, pc] of this.out) {
+      if (!pc.camSender) continue
+      await pc.camSender.replaceTrack(track).catch(() => {})
+      if (track) await tuneCamera(pc.camSender)
+      this.send(viewerId, 'cam', { sid: pc.sid, on: !!track })
+    }
   }
 
   forgive(viewerId) {
@@ -359,9 +422,10 @@ export class ScreenRoom {
     this.emit()
   }
 
-  async answer(from, sid, sdp) {
+  async answer(from, sid, sdp, cam = false) {
     const input = this.inputs.get(from)
     if (!input || input.sid !== sid || input.pc) return
+    input.cam = !!cam
     const pc = new RTCPeerConnection({ iceServers: this.ice })
     input.pc = pc
     if (!this.ice) {
@@ -374,7 +438,13 @@ export class ScreenRoom {
       if (e.track.kind === 'video' && 'jitterBufferTarget' in e.receiver) {
         try { e.receiver.jitterBufferTarget = 80 } catch { /* optional receiver hint */ }
       }
-      input.stream = e.streams[0] ?? input.stream ?? new MediaStream()
+      // A segunda trilha de video e a camera de quem transmite: fica fora do stream da tela.
+      const videos = pc.getTransceivers().filter((t) => t.receiver.track?.kind === 'video')
+      if (e.track.kind === 'video' && videos.indexOf(e.transceiver) > 0) {
+        input.camStream = new MediaStream([e.track])
+        return this.emit()
+      }
+      if (!input.stream) input.stream = new MediaStream()
       if (!input.stream.getTracks().includes(e.track)) input.stream.addTrack(e.track)
       this.emit()
     }
@@ -391,14 +461,19 @@ export class ScreenRoom {
 
   // ---------- sinalizacao ----------
 
-  async onSignal({ from, type, sid, sdp, candidate, dir }) {
+  async onSignal({ from, type, sid, sdp, candidate, dir, cam, on }) {
     try {
       if (type === 'unwatch' && this.out.get(from)?.sid === sid) {
         this.closeOut(from)
         return this.emit()
       }
       if (type === 'request') return await this.serve(from, sid)
-      if (type === 'offer') return await this.answer(from, sid, sdp)
+      if (type === 'offer') return await this.answer(from, sid, sdp, cam)
+      if (type === 'cam') {
+        const input = this.inputs.get(from)
+        if (input?.sid === sid) { input.cam = !!on; this.emit() }
+        return
+      }
       if (type === 'answer') {
         const pc = this.out.get(from)
         if (pc?.sid === sid && pc.signalingState === 'have-local-offer') {

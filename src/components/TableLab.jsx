@@ -45,7 +45,8 @@ function makePeer(sharing = true) {
   const name = NAMES[seq % NAMES.length] + (seq >= NAMES.length ? ' ' + Math.floor(seq / NAMES.length + 1) : '')
   const hue = (seq * 67) % 360
   seq++
-  return { id: 'lab-' + seq, name, hue, sharing, fail: false, delay: 800, device: seq % 4 === 0 ? 'mobile' : 'desktop', sim: sharing ? fakeStream(name, hue) : null }
+  return { id: 'lab-' + seq, name, hue, sharing, fail: false, delay: 800, device: seq % 4 === 0 ? 'mobile' : 'desktop', sim: sharing ? fakeStream(name, hue) : null,
+    cam: sharing && seq === 1 ? fakeStream('câmera', hue + 140) : null } // a primeira pessoa tambem transmite a camera
 }
 
 export default function TableLab() {
@@ -142,7 +143,7 @@ export default function TableLab() {
             <div className="lab-sheet-row"><span>Áudio</span><b>Tudo</b></div>
             {!own && <button className="lab-go" onClick={() => { toggleOwn(); setSheet(false) }}><span className="live-dot"/>Iniciar</button>}
           </div>}
-          renderStage={(tile, tools) => <Stage tools={tools} stream={tile.stream} local={tile.own} watchingName={tile.name} hasAudio={false}
+          renderStage={(tile, tools) => <Stage tools={tools} stream={tile.stream} cam={peers.find(p => p.id === tile.id)?.cam?.stream} local={tile.own} watchingName={tile.name} hasAudio={false}
             stats={tile.stream && !tile.own ? { height: 360, decoded: 30, kbps: 6000 } : null}/>}/>
       </div>
     </div>

@@ -19,12 +19,16 @@ function averageMs(stat, previous, timeKey, countKey) {
 
 function videoRtp(report, type) {
   if (!report) return null
+  // Com a camera ligada ha duas trilhas de video: a da tela e a maior (resolucao, depois bytes).
+  let best = null
+  const size = (s) => (s.frameWidth ?? 0) * (s.frameHeight ?? 0) * 1e6 + (s.bytesSent ?? s.bytesReceived ?? 0)
   for (const stat of report.values()) {
     if (stat.type !== type || (stat.kind ?? stat.mediaType) !== 'video') continue
     const codec = report.get(stat.codecId)?.mimeType.split('/')[1]
-    if (!/^(rtx|red|ulpfec|flexfec)/i.test(codec ?? '')) return { stat, codec }
+    if (/^(rtx|red|ulpfec|flexfec)/i.test(codec ?? '')) continue
+    if (!best || size(stat) > size(best.stat)) best = { stat, codec }
   }
-  return null
+  return best
 }
 
 function connection(report, stat) {

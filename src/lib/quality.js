@@ -50,6 +50,20 @@ export async function tuneSender(sender, preset, bitrate, keepResolution = true)
   }
 }
 
+// Camera junto com a tela: teto baixo e prioridade abaixo da tela, para nao roubar banda do jogo.
+export const CAMERA_BITRATE = 900_000
+export async function tuneCamera(sender) {
+  if (!sender?.track) return
+  const params = sender.getParameters()
+  if (!params.encodings?.length) params.encodings = [{}]
+  Object.assign(params.encodings[0], { maxBitrate: CAMERA_BITRATE, maxFramerate: 30, scaleResolutionDownBy: 1, priority: 'low', networkPriority: 'low' })
+  params.degradationPreference = 'balanced'
+  try { await sender.setParameters(params) } catch {
+    delete params.degradationPreference
+    await sender.setParameters(params).catch(() => {})
+  }
+}
+
 // Ajusta a SDP de resposta recebida pelo transmissor:
 // - video: libera BWE ate MAX_BITRATE e comeca alto (x-google-*)
 // - audio: Opus estereo, 256 kbps, sem DTX

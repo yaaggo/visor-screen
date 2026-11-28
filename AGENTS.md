@@ -1,7 +1,7 @@
 # AGENTS.md — Visor (gta-screen)
 
 Guia de continuidade para agentes (Codex, Claude Code). Leia isto inteiro antes de mexer no projeto.
-Ultima atualizacao: 2026-11-27, versao 1.17.3 (carta da mao sem flicker no ultimo pixel).
+Ultima atualizacao: 2026-11-27, versao 1.18.0 (camera junto com a tela).
 Ao terminar uma sessao de trabalho, atualize a secao "Estado atual".
 
 ## O que e
@@ -251,6 +251,27 @@ npx vercel deploy --prod --yes   # opcional: push em main ja publica
 - Envs: `.env.local` (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VERCEL_OIDC_TOKEN). Nao commitar.
 
 ## Estado atual
+
+1.18.0 — camera junto com a tela (2026-11-27):
+
+- Painel Transmitir: dropdown "Câmera" (Desligada + cameras do sistema, `useCameras`/`CameraPicker` em SharePanel; com
+  Dispositivo como fonte, a camera em uso some da lista; sem outra camera o item nao aparece). Escolha em `visor.cam`.
+  Vale ao vivo (Ajustes): ligar, trocar ou desligar nao reconecta ninguem.
+- Rede (`screen.js`): `serve()` sempre cria uma segunda trilha de video (`addTransceiver`, sendonly) no MESMO MediaStream
+  da tela, vazia se a camera estiver desligada; `setCamera(deviceId|null)` so faz `replaceTrack` em cada espectador e
+  manda o sinal `cam` ({ sid, on }); a oferta leva `cam`. Camera 640x360 30 fps, `tuneCamera` (900 kbps, prioridade
+  baixa) e `retune` nao aplica o bitrate da tela nela. Para com a transmissao. Versoes antigas recebem a trilha extra no
+  mesmo stream e tocam a primeira (a tela). Espectador novo separa pelo indice do transceiver de video (o 2o = camera):
+  `inputs[].cam` = MediaStream da camera quando ligada; transmissor ve a propria em `camLocal`.
+- Stats: com duas trilhas, `videoRtp` (screenStats) usa a maior (resolucao, depois bytes). O teste de UI (peers.js) le a
+  trilha com mais quadros (a da camera vazia tambem gera `inbound-rtp`).
+- Palco: `CamBubble` (ScreenChannel) no canto (22% da largura, 18% em tela cheia), aparece com quadros chegando; arrastar
+  leva ao canto mais proximo (`visor.camCorner`, igual para todas), botao recolhe numa pilula; espelhada so na propria
+  previa; some em cartas com menos de 300 px. TableLab: a primeira pessoa simulada tem camera.
+- QA: dois ScreenRoom na mesma pagina com WebRTC real e camera de canvas: camera 640x360 separada da tela 1280x720,
+  ligar antes e depois do espectador entrar, desligar/religar sem nova conexao, sender com 900 kbps/30 fps, camera para com
+  a transmissao. TableLab: posicao, arraste para o canto, recolher. `npm test` passou. Nao verificado: camera fisica
+  (o painel de teste bloqueia), app instalado com duas contas, carga extra numa partida real.
 
 1.17.3 — carta da mao sem flicker (2026-11-27):
 
